@@ -6,16 +6,18 @@ trait Subscription {
   def close
 }
 
-trait Observer[E] {
+trait Observer[-E] {
   def onCompleted() {}
   def onError(error: Exception) {}
   def onNext(event: E) {}
 }
 
-trait Observable[E] { self =>
+trait Observable[+E] { self =>
+  import Observable._
+
   def subscribe(observer: Observer[E]): Subscription
 
-  def subscribe(onCompleted: () => Unit = () => {}, onError: Exception => Unit = {_ =>}, onNext: E => Unit = {_ =>}): Subscription = {
+  def subscribe(onNext: E => Unit = defaultOnNext, onCompleted: () => Unit = defaultOnCompleted, onError: Exception => Unit = defaultOnError): Subscription = {
     val completed = onCompleted
     val error = onError
     val next = onNext
@@ -31,8 +33,20 @@ trait Observable[E] { self =>
       def subscribe(observer: Observer[F]): Subscription = {
         self.subscribe(new Observer[E] {
           override def onCompleted() = observer.onCompleted()
-          override def onNext(event: E) = observer.onNext(f(event))
           override def onError(error: Exception) = observer.onError(error)
+          override def onNext(event: E) = observer.onNext(f(event))
+        })
+      }
+    }
+  }
+
+  def filter(p: E => Boolean): Observable[E] = {
+    new Observable[E] {
+      def subscribe(observer: Observer[E]): Subscription = {
+        self.subscribe(new Observer[E] {
+          override def onCompleted() = observer.onCompleted()
+          override def onError(error: Exception) = observer.onError(error)
+          override def onNext(event: E) = if (p(event)) observer.onNext(event)
         })
       }
     }
@@ -42,12 +56,26 @@ trait Observable[E] { self =>
 
 object Observable {
 
+  def defaultOnCompleted() {}
+  def defaultOnError(error: Exception) {
+    throw error
+  }
+  def defaultOnNext[E](event: E) {}
+
   val noopSubscription = new Subscription {
     def close() {}
   }
 
+  def empty[E]: Observable[E] = {
+	Seq.empty.toObservable
+  }
+  
+  def singleton[E](event: E): Observable[E] = {
+	Seq(event).toObservable
+  }
+
   // only works for immediate observables!
-  def asSeq[E](observable: Observable[E]): Seq[E] = {
+  def toSeq[E](observable: Observable[E]): Seq[E] = {
     val result = new mutable.ArrayBuffer[E]
     observable.subscribe(new Observer[E] {
       override def onNext(event: E) { result append event }
@@ -55,12 +83,12 @@ object Observable {
     result
   }
 
-  implicit def traversable2observable[E](seq: Traversable[E]): Observable[E] = {
-    new Observable[E] {
+  class TraversableWithToObservable[E](val traversable: Traversable[E]) {
+    def toObservable: Observable[E] = new Observable[E] {
       override def subscribe(observer: Observer[E]): Subscription = {
         try {
-          for (s <- seq) {
-            observer.onNext(s)
+          for (event <- traversable) {
+            observer.onNext(event)
           }
           observer.onCompleted()
         } catch {
@@ -70,4 +98,6 @@ object Observable {
       }
     }
   }
+
+  implicit def traversable2observable[E](traversable: Traversable[E]): TraversableWithToObservable[E] = new TraversableWithToObservable(traversable)
 }

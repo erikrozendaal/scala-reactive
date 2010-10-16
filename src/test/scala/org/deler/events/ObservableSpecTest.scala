@@ -10,25 +10,25 @@ import scala.collection._
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableSpecTest extends Specification with JUnit with Mockito {
 
-  import Observable._
+  import Observable.traversable2observable
 
   val ex = new Exception("fail")
 
-    val emptyObservable: Observable[String] = Seq()
-    val multivaluedObservable: Observable[String] = Seq("first value", "second value")
+  val emptyTraversable = Seq[String]()
+  val multivaluedTraversable = Seq("first value", "second value")
 
-    val observer = mock[Observer[String]]
+  val observer = mock[Observer[String]]
 
   "traversables as observable" should {
 
     "only invoke onComplete when empty" in {
-      emptyObservable.subscribe(observer)
+      emptyTraversable.toObservable.subscribe(observer)
 
       there was one(observer).onCompleted()
       there were noMoreCallsTo(observer)
     }
     "invoke onNext for each contained element followed by onComplete" in {
-      multivaluedObservable.subscribe(observer)
+      multivaluedTraversable.toObservable.subscribe(observer)
 
       there was one(observer).onNext("first value") then one(observer).onNext("second value") then one(observer).onCompleted()
       there were noMoreCallsTo(observer)
@@ -38,7 +38,7 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
         def foreach[U](f: String => U) = throw ex
       }
 
-      fail.subscribe(observer)
+      fail.toObservable.subscribe(observer)
 
       there was one(observer).onError(ex)
       there were noMoreCallsTo(observer)
@@ -46,14 +46,14 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
   }
 
   "observables" should {
-    val observable: Observable[String] = Seq("event")
+    val observable = Seq("event").toObservable
     val failingObservable = new Observable[String] {
       override def subscribe(observer: Observer[String]) = {
         observer.onError(ex)
-        noopSubscription
+        Observable.noopSubscription
       }
     }
-  
+
     "allow easy subscription using single onNext method" in {
       observable subscribe (onNext = observer onNext _)
 
@@ -73,20 +73,38 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
       there were noMoreCallsTo(observer)
     }
     "allow observing using for-comprehension" in {
-      val events = Observable.asSeq(for (event <- observable) yield event)
+      val events = Observable.toSeq(for (event <- observable) yield event)
 
       events must be equalTo List("event")
     }
-//    "allow filtering using for-comprehension" in {
-//      val events = Observable.asSeq(for (event <- multivaluedObservable if event == "first event") yield event)
-//      
-//      events must be equalTo List("first event")
-//    }
-    
+    "allow filtering using for-comprehension" in {
+      val events = Observable.toSeq(for (event <- multivaluedTraversable.toObservable if event == "first value") yield event)
+
+      events must be equalTo List("first value")
+    }
+
     //		"allow for nested for-comprehension" in {
     //			val events = Observable.asSeq(for (e1 <- observable; e2 <- observable) yield (e1, e2))
     //			events must have size 4
     //		}
+  }
+
+  "empty observables" should {
+    "only publish onCompleted" in {
+      Observable.empty.subscribe(observer)
+
+      there was one(observer).onCompleted()
+      there were noMoreCallsTo(observer)
+    }
+  }
+
+  "singleton observables" should {
+    "only publish single event followed by onCompleted" in {
+      Observable.singleton("event").subscribe(observer)
+
+      there was one(observer).onNext("event") then one(observer).onCompleted()
+      there were noMoreCallsTo(observer)
+    }
   }
 
 }
