@@ -3,7 +3,7 @@ package org.deler.events
 import org.joda.time._
 import scala.collection._
 
-trait Schedule {
+trait Scheduler {
 
   def now: Instant
 
@@ -16,7 +16,7 @@ private class ScheduledAction(val time: Instant, val action: () => Unit) extends
   def compare(that: ScheduledAction) = this.time.compareTo(that.time)
 }
 
-class VirtualSchedule(initialNow: Instant = new Instant(0)) extends Schedule { self =>
+class VirtualScheduler(initialNow: Instant = new Instant(0)) extends Scheduler { self =>
 
   private var schedule = SortedSet[ScheduledAction]()
   private var _now = initialNow
@@ -34,20 +34,33 @@ class VirtualSchedule(initialNow: Instant = new Instant(0)) extends Schedule { s
   }
 
   def run() {
-    val actionToExecute = synchronized {
-      val action = schedule.firstOption
-      if (action.isDefined) {
-        schedule = schedule.tail
-        if (action.get.time isAfter _now) {
-          _now = action.get.time
-        }
-      }
-      action
-    }
-    if (actionToExecute.isDefined) {
-      actionToExecute.get.action()
+    this.takeNext() foreach { scheduled =>
+      scheduled.action()
       run()
     }
+  }
+
+  def runTo(instant: Instant) {
+    this.takeNext() foreach { scheduled =>
+      if (scheduled.time isAfter instant) {
+    	_now = instant
+    	schedule += scheduled
+      } else synchronized {
+        scheduled.action()
+        runTo(instant)
+      }
+    }
+  }
+
+  private def takeNext(): Option[ScheduledAction] = synchronized {
+    val action = schedule.firstOption
+    if (action.isDefined) {
+      schedule = schedule.tail
+      if (action.get.time isAfter _now) {
+        _now = action.get.time
+      }
+    }
+    action
   }
 
 }

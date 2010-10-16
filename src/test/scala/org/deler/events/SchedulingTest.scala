@@ -13,7 +13,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
 
   val INITIAL = new Instant
 
-  var subject = new VirtualSchedule(INITIAL)
+  var subject = new VirtualScheduler(INITIAL)
 
   var count = 0
   def action(expectedTime: Instant = INITIAL) { subject.now must be equalTo expectedTime; count += 1 }
@@ -51,6 +51,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
 
       subject.run
 
+      count must be equalTo 2
       subject.now must be equalTo INITIAL.plus(2000)
     }
     "run actions that are scheduled by other actions" in {
@@ -62,6 +63,23 @@ class SchedulingTest extends Specification with JUnit with Mockito {
 
       count must be equalTo 1
       subject.now must be equalTo INITIAL.plus(1000)
+    }
+    "run actions upto the specified instant (inclusive)" in {
+      subject schedule (action(INITIAL.plus(1000)), delay = new Duration(1000L))
+
+      subject.runTo(INITIAL.plus(1000))
+      
+      count must be equalTo 1
+      subject.now must be equalTo INITIAL.plus(1000)
+    }
+    "not run actions after the specified instant" in {
+      subject schedule (action(INITIAL.plus(2000)), delay = new Duration(2000L))
+      subject schedule (action(INITIAL.plus(1000)), delay = new Duration(1000L))
+
+      subject.runTo(INITIAL.plus(1500))
+      
+      count must be equalTo 1
+      subject.now must be equalTo INITIAL.plus(1500)
     }
   }
 

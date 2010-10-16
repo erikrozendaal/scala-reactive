@@ -3,13 +3,26 @@ package org.deler.events
 import scala.collection._
 
 trait Subscription {
-  def close
+  def close()
 }
 
 trait Observer[-E] {
   def onCompleted() {}
   def onError(error: Exception) {}
   def onNext(event: E) {}
+}
+
+trait Observed[E] extends Subscription {
+  def current: Option[E]
+}
+
+class LastObserved[E](observable: Observable[E]) extends Observed[E] {
+  private var _current: Option[E] = None
+  private var _subscription: Subscription = observable.subscribe(onNext = { event => _current = Some(event) })
+
+  def current: Option[E] = _current
+
+  def close() = _subscription.close()
 }
 
 trait Observable[+E] { self =>
@@ -40,6 +53,10 @@ trait Observable[+E] { self =>
     }
   }
 
+  def collect[F](pf: PartialFunction[E, F]): Observable[F] = {
+    for (event <- this if pf.isDefinedAt(event)) yield pf(event)
+  }
+
   def filter(p: E => Boolean): Observable[E] = {
     new Observable[E] {
       def subscribe(observer: Observer[E]): Subscription = {
@@ -51,6 +68,8 @@ trait Observable[+E] { self =>
       }
     }
   }
+
+  def observe[F >: E]: Observed[F] = new LastObserved[F](this)
 
 }
 
@@ -67,11 +86,11 @@ object Observable {
   }
 
   def empty[E]: Observable[E] = {
-	Seq.empty.toObservable
+    Seq.empty.toObservable
   }
-  
+
   def singleton[E](event: E): Observable[E] = {
-	Seq(event).toObservable
+    Seq(event).toObservable
   }
 
   // only works for immediate observables!
@@ -79,7 +98,7 @@ object Observable {
     val result = new mutable.ArrayBuffer[E]
     observable.subscribe(new Observer[E] {
       override def onNext(event: E) { result append event }
-    }).close
+    }).close()
     result
   }
 

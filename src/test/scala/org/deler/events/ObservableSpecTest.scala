@@ -72,6 +72,13 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
       there was one(observer).onError(ex)
       there were noMoreCallsTo(observer)
     }
+    "collect events" in {
+      val observable = Seq(1, "event").toObservable
+      
+      val collected = Observable.toSeq(observable collect { case x:String => x })
+      
+      collected must be equalTo List("event")
+    }
     "allow observing using for-comprehension" in {
       val events = Observable.toSeq(for (event <- observable) yield event)
 
@@ -82,7 +89,20 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
 
       events must be equalTo List("first value")
     }
-
+    "allow easy observation of last published value" in {
+      val subject = new Subject[String]
+      val observed = subject.observe
+      
+      observed.current must be equalTo None
+      
+      subject.onNext("hello")
+      
+      observed.current must be equalTo Some("hello")
+      
+      subject.onNext("world")
+      
+      observed.current must be equalTo Some("world")
+    }
     //		"allow for nested for-comprehension" in {
     //			val events = Observable.asSeq(for (e1 <- observable; e2 <- observable) yield (e1, e2))
     //			events must have size 4
