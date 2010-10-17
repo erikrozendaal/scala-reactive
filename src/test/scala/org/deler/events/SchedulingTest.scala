@@ -68,7 +68,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject schedule (action(INITIAL.plus(1000)), delay = new Duration(1000L))
 
       subject.runTo(INITIAL.plus(1000))
-      
+
       count must be equalTo 1
       subject.now must be equalTo INITIAL.plus(1000)
     }
@@ -77,9 +77,27 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject schedule (action(INITIAL.plus(1000)), delay = new Duration(1000L))
 
       subject.runTo(INITIAL.plus(1500))
-      
+
       count must be equalTo 1
       subject.now must be equalTo INITIAL.plus(1500)
+    }
+    "not run actions that have been cancelled" in {
+      val subscription = subject schedule (action(INITIAL.plus(2000)), delay = new Duration(2000L))
+      subject schedule ({ subscription.close(); action(INITIAL.plus(1000)) }, delay = new Duration(1000L))
+
+      subject.run()
+
+      count must be equalTo 1
+      subject.now must be equalTo INITIAL.plus(1000)
+    }
+    "not cancel actions that have already run" in {
+      val subscription = subject schedule (action(INITIAL.plus(1000)), delay = new Duration(1000L))
+      subject schedule ({ subscription.close(); action(INITIAL.plus(2000)) }, delay = new Duration(2000L))
+
+      subject.run()
+
+      count must be equalTo 2
+      subject.now must be equalTo INITIAL.plus(2000)
     }
   }
 
