@@ -6,9 +6,9 @@ import scala.collection._
 trait Scheduler {
   def now: Instant
 
-  def schedule(action: => Unit): Subscription = schedule(action, now)
-  def schedule(action: => Unit, at: Instant): Subscription = schedule(action, new Duration(now, at))
-  def schedule(action: => Unit, delay: Duration): Subscription = schedule(action, now.plus(delay))
+  def schedule(action: => Unit): Subscription = scheduleAt(now)(action)
+  def scheduleAt(at: Instant)(action: => Unit): Subscription = scheduleAfter(new Duration(now, at))(action)
+  def scheduleAfter(delay: Duration)(action: => Unit): Subscription = scheduleAt(now plus delay)(action)
 }
 
 object Scheduler {
@@ -31,14 +31,14 @@ object Scheduler {
  */
 class ImmediateScheduler extends Scheduler {
 
-  def now = new Instant(DateTimeUtils.currentTimeMillis)
+  def now = new Instant
 
   override def schedule(action: => Unit): Subscription = {
     action
     Observable.noopSubscription
   }
 
-  override def schedule(action: => Unit, delay: Duration): Subscription = {
+  override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
     if (delay.getMillis > 0) {
       Thread.sleep(delay.getMillis)
     }
@@ -84,16 +84,16 @@ private class Schedule { self =>
  */
 private class CurrentThreadScheduler extends Scheduler { self =>
 
-  private var schedule = new Schedule
+  private var scheduleAt = new Schedule
 
-  def now = new Instant(DateTimeUtils.currentTimeMillis)
+  def now = new Instant
 
-  override def schedule(action: => Unit, at: Instant): Subscription = {
-    schedule enqueue (new ScheduledAction(at, () => action))
+  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
+    scheduleAt enqueue (new ScheduledAction(at, () => action))
   }
 
   def run() {
-    schedule.dequeue match {
+    scheduleAt.dequeue match {
       case None =>
       case Some(scheduled) => {
         if (scheduled.time isAfter now) {
@@ -109,11 +109,18 @@ private class CurrentThreadScheduler extends Scheduler { self =>
 }
 
 object CurrentThreadScheduler {
-  def runOnCurrentThread(action: Scheduler => Unit) {
-    val scheduler = new CurrentThreadScheduler
+  /**
+   * Creates a new CurrentThreadScheduler and binds it to the current thread. The <code>action</code> is executed. 
+   * After the action completes all scheduled actions are executed. Once the schedule is empty control is passed back 
+   * to the caller.
+   * 
+   * This method is intended to be used when a new thread that intends to use observers is started.
+   */
+  def runOnCurrentThread(action: => Unit) {
     try {
+      val scheduler = new CurrentThreadScheduler
       Scheduler._currentThread.set(scheduler)
-      action(scheduler)
+      action
       scheduler.run()
     } finally {
       Scheduler._currentThread.remove()
@@ -123,17 +130,17 @@ object CurrentThreadScheduler {
 
 class VirtualScheduler(initialNow: Instant = new Instant(0)) extends Scheduler { self =>
 
-  private var schedule = new Schedule
+  private var scheduleAt = new Schedule
   private var _now = initialNow
 
   def now: Instant = _now
 
-  override def schedule(action: => Unit, at: Instant): Subscription = {
-    schedule enqueue (new ScheduledAction(at, () => action))
+  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
+    scheduleAt enqueue (new ScheduledAction(at, () => action))
   }
 
   def run() {
-    schedule.dequeue match {
+    scheduleAt.dequeue match {
       case None =>
       case Some(scheduled) => {
         if (scheduled.time isAfter _now) {
@@ -146,7 +153,7 @@ class VirtualScheduler(initialNow: Instant = new Instant(0)) extends Scheduler {
   }
 
   def runTo(instant: Instant) {
-    schedule.dequeue(instant) match {
+    scheduleAt.dequeue(instant) match {
       case None => _now = instant
       case Some(scheduled) => {
         if (scheduled.time isAfter _now) {
