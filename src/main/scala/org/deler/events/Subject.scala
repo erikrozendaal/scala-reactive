@@ -9,8 +9,12 @@ class Subject[E] extends Observable[E] with Observer[E] {
   protected var error: Option[Exception] = None;
 
   def subscribe(observer: Observer[E]): Subscription = {
-    new SubjectSubscription(observer)
+    val result = new SubjectSubscription(observer)
+    val onUnsubscribe = onSubscribe(observer)
+    new Subscription { def close = { result.close(); onUnsubscribe(); } }
   }
+  
+  def onSubscribe(observer: Observer[E]): () => Unit = () => {}
   
   override def onCompleted() {
 	if (completed) return

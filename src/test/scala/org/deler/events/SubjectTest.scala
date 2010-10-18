@@ -93,6 +93,24 @@ class SubjectTest extends Specification with JUnit with Mockito {
 
   }
 
+  "extended subject" should {
+    "invoke onSubscribe when new observer subscribes and invoke result when subscription is disposed" in {
+      var onSubscribeInvoked = false
+      var onUnsubscribeInvoked = false
+      val subject = new Subject[String] {
+        override def onSubscribe(observer: Observer[String]) = {
+          onSubscribeInvoked = true
+          () => onUnsubscribeInvoked = true
+        }
+      }
+
+      subject.subscribe(observer).close()
+
+      onSubscribeInvoked must be equalTo true
+      onUnsubscribeInvoked must be equalTo true
+    }
+  }
+
   "replay subjects" definedAs replaySubject should {
     behave like "subjects with a single observer"
     behave like "subjects with multiple observers"
@@ -118,9 +136,9 @@ class SubjectTest extends Specification with JUnit with Mockito {
     "replay all past events to a new subscription followed by onError when failed" in {
       subject.onNext(event)
       subject.onError(error)
-      
+
       subject.subscribe(observer)
-      
+
       there was one(observer).onNext(event) then one(observer).onError(error)
       there were noMoreCallsTo(observer)
     }

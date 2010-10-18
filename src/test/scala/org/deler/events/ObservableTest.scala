@@ -43,6 +43,15 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
       there was one(observer).onError(ex)
       there were noMoreCallsTo(observer)
     }
+    "stop producing values when the subscription is closed" in {
+      CurrentThreadScheduler runOnCurrentThread {
+        var subscription: Subscription = null
+
+        subscription = multivaluedTraversable.toObservable(Scheduler.currentThread).perform(subscription.close()).subscribe(observer)
+      }
+      there was one(observer).onNext("first value")
+      there were noMoreCallsTo(observer)
+    }
   }
 
   "observables" should {
@@ -74,9 +83,9 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
     }
     "collect events" in {
       val observable = Seq(1, "event").toObservable
-      
-      val collected = Observable.toSeq(observable collect { case x:String => x })
-      
+
+      val collected = Observable.toSeq(observable collect { case x: String => x })
+
       collected must be equalTo List("event")
     }
     "allow observing using for-comprehension" in {
@@ -92,15 +101,15 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
     "allow easy observation of last published value" in {
       val subject = new Subject[String]
       val observed = subject.observe
-      
+
       observed.current must be equalTo None
-      
+
       subject.onNext("hello")
-      
+
       observed.current must be equalTo Some("hello")
-      
+
       subject.onNext("world")
-      
+
       observed.current must be equalTo Some("world")
     }
     //		"allow for nested for-comprehension" in {
@@ -126,5 +135,61 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
       there were noMoreCallsTo(observer)
     }
   }
+
+  "take n" should {
+    val observer: Observer[Int] = mock[Observer[Int]]
+    val sequence = List(1, 2, 3, 4).toObservable
+
+    "stop immediately when n is 0" in {
+      sequence.take(0).subscribe(observer)
+
+      there was one(observer).onCompleted()
+      there were noMoreCallsTo(observer)
+    }
+
+    "stop return the first value when n = 1" in {
+      sequence.take(1).subscribe(observer)
+
+      there was one(observer).onNext(1) then one(observer).onCompleted()
+      there were noMoreCallsTo(observer)
+    }
+
+    "stop return the first three values when n = 3" in {
+      sequence.take(3).subscribe(observer)
+
+      there was one(observer).onNext(1) then one(observer).onNext(2) then one(observer).onNext(3) then one(observer).onCompleted()
+      there were noMoreCallsTo(observer)
+    }
+
+    "stop return the all values when n is larger than the observable length" in {
+      sequence.take(12).subscribe(observer)
+
+      there was one(observer).onNext(1) then one(observer).onNext(2) then one(observer).onNext(3) then one(observer).onNext(4) then one(observer).onCompleted()
+      there were noMoreCallsTo(observer)
+    }
+
+    "stop producing values when the subscription is disposed" in {
+      CurrentThreadScheduler runOnCurrentThread {
+        var subscription: Subscription = null
+
+        subscription = sequence.observeOn(Scheduler.currentThread).take(3).perform { subscription.close() }.subscribe(observer)
+      }
+
+      there was one(observer).onNext(1)
+      there were noMoreCallsTo(observer)
+    }
+  }
+
+//  "repeat" should {
+//    "repeat singleton until unsubscribed" in {
+//      CurrentThreadScheduler.runOnCurrentThread {
+//        Console.println("Running with repeat")
+//        Observable.singleton("event", Scheduler.immediate).repeat.take(1).subscribe(observer)
+//        Console.println("Done with repeat")
+//      }
+//      there was one(observer).onNext("event") then one(observer).onCompleted()
+//      there were noMoreCallsTo(observer)
+//    }
+//  }
 
 }

@@ -32,7 +32,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       count must be equalTo 1
     }
     "run scheduled action at specified time" in {
-      subject.scheduleAfter(new Duration(1000L)) {action(INITIAL.plus(1000))}
+      subject.scheduleAfter(new Duration(1000L)) { action(INITIAL.plus(1000)) }
 
       subject.run
 
@@ -46,8 +46,8 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject.now must be equalTo INITIAL
     }
     "run actions in scheduled ordered" in {
-      subject.scheduleAfter(new Duration(2000L)) {action(INITIAL.plus(2000))}
-      subject.scheduleAfter(new Duration(1000L)) {action(INITIAL.plus(1000))}
+      subject.scheduleAfter(new Duration(2000L)) { action(INITIAL.plus(2000)) }
+      subject.scheduleAfter(new Duration(1000L)) { action(INITIAL.plus(1000)) }
 
       subject.run
 
@@ -56,7 +56,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
     }
     "run actions that are scheduled by other actions" in {
       subject schedule {
-        subject.scheduleAfter(new Duration(1000L)) {action(INITIAL.plus(1000))}
+        subject.scheduleAfter(new Duration(1000L)) { action(INITIAL.plus(1000)) }
       }
 
       subject.run
@@ -65,7 +65,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject.now must be equalTo INITIAL.plus(1000)
     }
     "run actions upto the specified instant (inclusive)" in {
-      subject.scheduleAfter(new Duration(1000L)) {action(INITIAL.plus(1000))}
+      subject.scheduleAfter(new Duration(1000L)) { action(INITIAL.plus(1000)) }
 
       subject.runTo(INITIAL.plus(1000))
 
@@ -73,8 +73,8 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject.now must be equalTo INITIAL.plus(1000)
     }
     "not run actions after the specified instant" in {
-      subject.scheduleAfter(new Duration(2000L)) {action(INITIAL.plus(2000))}
-      subject.scheduleAfter(new Duration(1000L)) {action(INITIAL.plus(1000))}
+      subject.scheduleAfter(new Duration(2000L)) { action(INITIAL.plus(2000)) }
+      subject.scheduleAfter(new Duration(1000L)) { action(INITIAL.plus(1000)) }
 
       subject.runTo(INITIAL.plus(1500))
 
@@ -82,7 +82,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject.now must be equalTo INITIAL.plus(1500)
     }
     "not run actions that have been cancelled" in {
-      val subscription = subject.scheduleAfter(new Duration(2000L)) {action(INITIAL.plus(2000))}
+      val subscription = subject.scheduleAfter(new Duration(2000L)) { action(INITIAL.plus(2000)) }
       subject.scheduleAfter(new Duration(1000L)) { subscription.close(); action(INITIAL.plus(1000)) }
 
       subject.run()
@@ -91,7 +91,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject.now must be equalTo INITIAL.plus(1000)
     }
     "not cancel actions that have already run" in {
-      val subscription = subject.scheduleAfter(new Duration(1000L)) {action(INITIAL.plus(1000))}
+      val subscription = subject.scheduleAfter(new Duration(1000L)) { action(INITIAL.plus(1000)) }
       subject.scheduleAfter(new Duration(2000L)) { subscription.close(); action(INITIAL.plus(2000)) }
 
       subject.run()
@@ -132,6 +132,19 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       scheduledByScheduledCompleted must be equalTo true
     }
 
+    "run actions scheduled at the same time in scheduling order" in {
+      var count = 0
+      CurrentThreadScheduler.runOnCurrentThread {
+        for (i <- 0 until 10) {
+          Scheduler.currentThread.schedule {
+            count must be equalTo i
+            count += 1
+          }
+        }
+      }
+      count must be equalTo 10
+    }
+    
     "run actions scheduled with delay by sleeping the current thread" in {
       val start = System.currentTimeMillis
       CurrentThreadScheduler.runOnCurrentThread {

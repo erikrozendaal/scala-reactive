@@ -47,17 +47,30 @@ class ImmediateScheduler extends Scheduler {
 
 }
 
-private class ScheduledAction(val time: Instant, val action: () => Unit) extends Ordered[ScheduledAction] {
-  def compare(that: ScheduledAction) = this.time.compareTo(that.time)
+private class ScheduledAction(val time: Instant, val sequence: Long, val action: () => Unit) extends Ordered[ScheduledAction] {
+  def compare(that: ScheduledAction) = {
+    var rc = this.time.compareTo(that.time)
+    if (rc == 0) {
+      if (this.sequence < that.sequence) {
+        rc = -1;
+      } else if (this.sequence > that.sequence) {
+        rc = 1;
+      }
+    }
+    rc
+  }
 }
 
 private class Schedule { self =>
 
+  private var sequence: Long = 0L
   private var schedule = SortedSet[ScheduledAction]()
 
-  def enqueue(action: ScheduledAction): Subscription = self.synchronized {
-    schedule += action
-    new Subscription { def close() = self.synchronized { schedule -= action } }
+  def enqueue(time: Instant, action: () => Unit): Subscription = self.synchronized {
+    val scheduled = new ScheduledAction(time, sequence, action)
+    schedule += scheduled
+    sequence += 1
+    new Subscription { def close() = self.synchronized { schedule -= scheduled } }
   }
 
   def dequeue: Option[ScheduledAction] = self.synchronized {
@@ -89,7 +102,7 @@ private class CurrentThreadScheduler extends Scheduler { self =>
   def now = new Instant
 
   override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
-    scheduleAt enqueue (new ScheduledAction(at, () => action))
+    scheduleAt enqueue (at, () => action)
   }
 
   def run() {
@@ -136,7 +149,7 @@ class VirtualScheduler(initialNow: Instant = new Instant(0)) extends Scheduler {
   def now: Instant = _now
 
   override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
-    scheduleAt enqueue (new ScheduledAction(at, () => action))
+    scheduleAt enqueue (at, () => action)
   }
 
   def run() {

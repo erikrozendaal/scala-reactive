@@ -57,19 +57,64 @@ trait Observable[+E] { self =>
     for (event <- this if pf.isDefinedAt(event)) yield pf(event)
   }
 
-  def filter(p: E => Boolean): Observable[E] = {
-    new Observable[E] {
-      def subscribe(observer: Observer[E]): Subscription = {
-        self.subscribe(new Observer[E] {
-          override def onCompleted() = observer.onCompleted()
-          override def onError(error: Exception) = observer.onError(error)
-          override def onNext(event: E) = if (p(event)) observer.onNext(event)
-        })
-      }
+  def filter(p: E => Boolean): Observable[E] = new Observable[E] {
+    def subscribe(observer: Observer[E]): Subscription = {
+      self.subscribe(new Observer[E] {
+        override def onCompleted() = observer.onCompleted()
+        override def onError(error: Exception) = observer.onError(error)
+        override def onNext(event: E) = if (p(event)) observer.onNext(event)
+      })
     }
   }
 
   def observe[F >: E]: Observed[F] = new LastObserved[F](this)
+
+  def observeOn(scheduler: Scheduler): Observable[E] = new Observable[E] {
+    def subscribe(observer: Observer[E]) = {
+      self.subscribe(new Observer[E] {
+        override def onCompleted() = scheduler schedule { observer.onCompleted() }
+        override def onError(error: Exception) = scheduler schedule { observer.onError(error) }
+        override def onNext(event: E) = scheduler schedule { observer.onNext(event) }
+      })
+    }
+  }
+
+  def perform(action: => Unit): Observable[E] = perform(_ => action)
+  def perform(action: E => Unit): Observable[E] = new Observable[E] {
+    def subscribe(observer: Observer[E]) = {
+      self.subscribe(new Observer[E] {
+        override def onCompleted() = observer.onCompleted()
+        override def onError(error: Exception) = observer.onError(error)
+        override def onNext(event: E) = { action(event); observer.onNext(event) }
+      })
+    }
+  }
+
+  def repeat: Observable[E] = new Subject[E] {
+    var subscription = noopSubscription
+    override def subscribe(observer: Observer[E]): Subscription = {
+      val result = super.subscribe(observer)
+      subscription = self.subscribe(this);
+      result
+    }
+    override def onCompleted() = { subscription.close(); subscription = self.subscribe(this) }
+  }
+
+  def take(n: Int): Observable[E] = new Subject[E] {
+    var count: Int = 0
+    override def onSubscribe(observer: Observer[E]) = {
+      val subscription = self.subscribe(this)
+      () => subscription.close()
+    }
+    override def onNext(event: E) = {
+      if (count >= n) {
+        onCompleted()
+      } else {
+        count += 1
+        super.onNext(event)
+      }
+    }
+  }
 
 }
 
@@ -89,8 +134,8 @@ object Observable {
     Seq.empty.toObservable
   }
 
-  def singleton[E](event: E): Observable[E] = {
-    Seq(event).toObservable
+  def singleton[E](event: E, scheduler: Scheduler = Scheduler.immediate): Observable[E] = {
+    Seq(event).toObservable(scheduler)
   }
 
   // only works for immediate observables!
@@ -103,17 +148,22 @@ object Observable {
   }
 
   class TraversableWithToObservable[E](val traversable: Traversable[E]) {
-    def toObservable: Observable[E] = new Observable[E] {
-      override def subscribe(observer: Observer[E]): Subscription = {
-        try {
-          for (event <- traversable) {
-            observer.onNext(event)
+    def toObservable: Observable[E] = toObservable(Scheduler.immediate)
+    def toObservable(scheduler: Scheduler): Observable[E] = new Subject[E] {
+      override def onSubscribe(observer: Observer[E]) = {
+    	var cancel = false
+        scheduler.schedule {
+          try {
+            for (event <- traversable if !cancel) {
+              onNext(event)
+            }
+            if (!cancel)
+              onCompleted()
+          } catch {
+            case ex: Exception => onError(ex)
           }
-          observer.onCompleted()
-        } catch {
-          case ex: Exception => observer.onError(ex)
         }
-        noopSubscription
+        () => { cancel = true }
       }
     }
   }
