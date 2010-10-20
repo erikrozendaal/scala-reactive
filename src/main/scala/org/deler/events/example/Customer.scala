@@ -12,11 +12,11 @@ class CustomerView extends Subject[CustomerEvent] {
 
   val customerId: Observed[UUID] = collect {
     case x: CustomerRegisteredEvent => x.customerId
-  }.observe
+  }.latest
 
   val address: Observed[String] = collect {
     case x: CustomerRegisteredEvent => x.address
     case x: CustomerMovedEvent => x.address
-  }.observe
+  }.latest
 
 }

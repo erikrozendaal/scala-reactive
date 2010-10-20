@@ -100,7 +100,7 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
     }
     "allow easy observation of last published value" in {
       val subject = new Subject[String]
-      val observed = subject.observe
+      val observed = subject.latest
 
       observed.current must be equalTo None
 

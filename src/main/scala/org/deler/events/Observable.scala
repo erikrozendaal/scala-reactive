@@ -67,7 +67,7 @@ trait Observable[+E] { self =>
     }
   }
 
-  def observe[F >: E]: Observed[F] = new LastObserved[F](this)
+  def latest[F >: E]: Observed[F] = new LastObserved[F](this)
 
   def observeOn(scheduler: Scheduler): Observable[E] = new Observable[E] {
     def subscribe(observer: Observer[E]) = {
