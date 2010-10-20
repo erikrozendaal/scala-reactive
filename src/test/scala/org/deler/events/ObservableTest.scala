@@ -8,7 +8,7 @@ import org.mockito.Matchers._
 import scala.collection._
 
 @RunWith(classOf[JUnitSuiteRunner])
-class ObservableSpecTest extends Specification with JUnit with Mockito {
+class ObservableTest extends Specification with JUnit with Mockito {
 
   import Observable.traversable2observable
 
@@ -44,7 +44,7 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
       there were noMoreCallsTo(observer)
     }
     "stop producing values when the subscription is closed" in {
-      CurrentThreadScheduler runOnCurrentThread {
+      Scheduler.currentThread schedule {
         var subscription: Subscription = null
 
         subscription = multivaluedTraversable.toObservable(Scheduler.currentThread).perform(subscription.close()).subscribe(observer)
@@ -169,7 +169,7 @@ class ObservableSpecTest extends Specification with JUnit with Mockito {
     }
 
     "stop producing values when the subscription is disposed" in {
-      CurrentThreadScheduler runOnCurrentThread {
+      Scheduler.currentThread schedule {
         var subscription: Subscription = null
 
         subscription = sequence.observeOn(Scheduler.currentThread).take(3).perform { subscription.close() }.subscribe(observer)

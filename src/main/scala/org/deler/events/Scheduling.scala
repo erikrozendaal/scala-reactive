@@ -12,17 +12,8 @@ trait Scheduler {
 }
 
 object Scheduler {
-
-  protected[events] var _currentThread: ThreadLocal[CurrentThreadScheduler] = new ThreadLocal
-
   val immediate: Scheduler = new ImmediateScheduler
-
-  def currentThread: Scheduler = {
-    val result = _currentThread.get
-    if (result == null)
-      throw new IllegalStateException("no CurrentThreadScheduler started on this thread: " + Thread.currentThread)
-    result
-  }
+  val currentThread: Scheduler = new CurrentThreadScheduler
 }
 
 /**
@@ -47,7 +38,7 @@ class ImmediateScheduler extends Scheduler {
 
 }
 
-private class ScheduledAction(val time: Instant, val sequence: Long, val action: () => Unit) extends Ordered[ScheduledAction] {
+private[this] class ScheduledAction(val time: Instant, val sequence: Long, val action: () => Unit) extends Ordered[ScheduledAction] {
   def compare(that: ScheduledAction) = {
     var rc = this.time.compareTo(that.time)
     if (rc == 0) {
@@ -61,19 +52,19 @@ private class ScheduledAction(val time: Instant, val sequence: Long, val action:
   }
 }
 
-private class Schedule { self =>
+private[events] class Schedule { self =>
 
   private var sequence: Long = 0L
   private var schedule = SortedSet[ScheduledAction]()
 
-  def enqueue(time: Instant, action: () => Unit): Subscription = self.synchronized {
+  def enqueue(time: Instant, action: () => Unit): Subscription = {
     val scheduled = new ScheduledAction(time, sequence, action)
     schedule += scheduled
     sequence += 1
-    new Subscription { def close() = self.synchronized { schedule -= scheduled } }
+    new Subscription { def close() = { schedule -= scheduled } }
   }
 
-  def dequeue: Option[ScheduledAction] = self.synchronized {
+  def dequeue: Option[ScheduledAction] = {
     if (schedule.isEmpty) {
       None
     } else {
@@ -83,60 +74,11 @@ private class Schedule { self =>
     }
   }
 
-  def dequeue(noLaterThan: Instant): Option[ScheduledAction] = self.synchronized {
+  def dequeue(noLaterThan: Instant): Option[ScheduledAction] = {
     if (schedule.isEmpty || (schedule.head.time isAfter noLaterThan)) {
       None
     } else {
       dequeue
-    }
-  }
-}
-
-/**
- * Schedules actions to run on the current thread (the thread that owns this instance). Instances of this class must be thread-safe!
- */
-private class CurrentThreadScheduler extends Scheduler { self =>
-
-  private var scheduleAt = new Schedule
-
-  def now = new Instant
-
-  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
-    scheduleAt enqueue (at, () => action)
-  }
-
-  def run() {
-    scheduleAt.dequeue match {
-      case None =>
-      case Some(scheduled) => {
-        if (scheduled.time isAfter now) {
-          Thread.sleep(scheduled.time.getMillis - now.getMillis)
-        }
-        scheduled.action()
-        run()
-      }
-    }
-
-  }
-
-}
-
-object CurrentThreadScheduler {
-  /**
-   * Creates a new CurrentThreadScheduler and binds it to the current thread. The <code>action</code> is executed. 
-   * After the action completes all scheduled actions are executed. Once the schedule is empty control is passed back 
-   * to the caller.
-   * 
-   * This method is intended to be used when a new thread that intends to use observers is started.
-   */
-  def runOnCurrentThread(action: => Unit) {
-    try {
-      val scheduler = new CurrentThreadScheduler
-      Scheduler._currentThread.set(scheduler)
-      action
-      scheduler.run()
-    } finally {
-      Scheduler._currentThread.remove()
     }
   }
 }

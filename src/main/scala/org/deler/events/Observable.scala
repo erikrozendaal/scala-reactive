@@ -6,12 +6,6 @@ trait Subscription {
   def close()
 }
 
-trait Observer[-E] {
-  def onCompleted() {}
-  def onError(error: Exception) {}
-  def onNext(event: E) {}
-}
-
 trait Observed[E] extends Subscription {
   def current: Option[E]
 }
@@ -25,10 +19,8 @@ class LastObserved[E](observable: Observable[E]) extends Observed[E] {
   def close() = _subscription.close()
 }
 
-trait Observable[+E] { self =>
+trait Observable[+E] extends ObservableLike[E] { self =>
   import Observable._
-
-  def subscribe(observer: Observer[E]): Subscription
 
   def subscribe(onNext: E => Unit = defaultOnNext, onCompleted: () => Unit = defaultOnCompleted, onError: Exception => Unit = defaultOnError): Subscription = {
     val completed = onCompleted
