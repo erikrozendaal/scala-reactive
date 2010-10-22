@@ -3,3 +3,6 @@
 .scala_dependencies
 .settings
 target
+*.iml
+*.ipr
+*.iws
