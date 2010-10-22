@@ -16,7 +16,10 @@ class SchedulingTest extends Specification with JUnit with Mockito {
   var subject = new VirtualScheduler(INITIAL)
 
   var count = 0
-  def action(expectedTime: Instant = INITIAL) { subject.now must be equalTo expectedTime; count += 1 }
+  def action(expectedTime: Instant = INITIAL) {
+    subject.now must be equalTo expectedTime
+    count += 1
+  }
 
   "virtual schedule" should {
     "not run an action when it is scheduled" in {
@@ -98,6 +101,20 @@ class SchedulingTest extends Specification with JUnit with Mockito {
 
       count must be equalTo 2
       subject.now must be equalTo INITIAL.plus(2000)
+    }
+
+    "schedule recursive action" in {
+      var count = 0
+      subject.scheduleRecursive { self =>
+        count += 1
+        if (count < 2) {
+          self()
+        }
+      }
+
+      subject.run()
+
+      count must be equalTo 2
     }
   }
 

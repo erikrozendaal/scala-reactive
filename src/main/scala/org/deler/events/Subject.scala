@@ -13,11 +13,11 @@ class Subject[E] extends Observable[E] with Observer[E] {
     val onUnsubscribe = onSubscribe(observer)
     new Subscription { def close = { result.close(); onUnsubscribe(); } }
   }
-  
+
   def onSubscribe(observer: Observer[E]): () => Unit = () => {}
-  
+
   override def onCompleted() {
-	if (completed) return
+    if (completed) return
     completed = true
     dispatch(_.onCompleted())
   }
@@ -35,7 +35,7 @@ class Subject[E] extends Observable[E] with Observer[E] {
   }
 
   private def dispatch(f: Observer[E] => Unit) {
-	subscriptions foreach { subscription => f(subscription.observer) }
+    subscriptions foreach { subscription => f(subscription.observer) }
   }
 
   private class SubjectSubscription(val observer: Observer[E]) extends Subscription {
@@ -50,18 +50,20 @@ class Subject[E] extends Observable[E] with Observer[E] {
 
 class ReplaySubject[E] extends Subject[E] {
 
-	private var events = immutable.Queue[E]()
-	
-	override def subscribe(observer: Observer[E]): Subscription = {
-		val subscription = super.subscribe(observer)
-		events foreach { observer.onNext(_) }
-		if (error.isDefined) observer.onError(error.get)
-		else if (completed) observer.onCompleted()
-		subscription
-	}
-	
-	override def onNext(event: E) {
-		super.onNext(event)
-		if (!completed) events += event
-	}
+  private var events = immutable.Queue[E]()
+
+  override def subscribe(observer: Observer[E]): Subscription = {
+    val subscription = super.subscribe(observer)
+    events foreach { observer.onNext(_) }
+    if (error.isDefined) observer.onError(error.get)
+    else if (completed) observer.onCompleted()
+    subscription
+  }
+
+  override def onNext(event: E) {
+    super.onNext(event)
+    if (!completed) {
+      events = events enqueue event
+    }
+  }
 }

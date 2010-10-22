@@ -11,7 +11,7 @@ import scala.collection._
 @RunWith(classOf[JUnitSuiteRunner])
 class CurrentThreadSchedulerTest extends Specification with JUnit with Mockito {
 
-  var subject = new CurrentThreadScheduler
+  val subject = new CurrentThreadScheduler
 
   "current thread scheduler" should {
     "run initial action immediately" in {
@@ -35,7 +35,7 @@ class CurrentThreadSchedulerTest extends Specification with JUnit with Mockito {
         initialCompleted = true
       }
 
-      initialCompleted must be equalTo true
+      initialCompleted must beTrue
     }
 
     "run actions scheduled at the same time in scheduling order" in {

@@ -6,127 +6,143 @@ trait Subscription {
   def close()
 }
 
-trait Observed[E] extends Subscription {
-  def current: Option[E]
+object NoopSubscription extends Subscription {
+  def close() = {}
 }
 
-class LastObserved[E](observable: Observable[E]) extends Observed[E] {
-  private var _current: Option[E] = None
-  private var _subscription: Subscription = observable.subscribe(onNext = { event => _current = Some(event) })
+class FutureSubscription extends Subscription {
+  private var _subscription: Option[Subscription] = None
+  private var _closed = false
 
-  def current: Option[E] = _current
-
-  def close() = _subscription.close()
-}
-
-trait Observable[+E] extends ObservableLike[E] { self =>
-  import Observable._
-
-  def subscribe(onNext: E => Unit = defaultOnNext, onCompleted: () => Unit = defaultOnCompleted, onError: Exception => Unit = defaultOnError): Subscription = {
-    val completed = onCompleted
-    val error = onError
-    val next = onNext
-    this subscribe (new Observer[E] {
-      override def onCompleted() = completed()
-      override def onError(ex: Exception) = error(ex)
-      override def onNext(event: E) = next(event)
-    })
-  }
-
-  def map[F](f: E => F): Observable[F] = {
-    new Observable[F] {
-      def subscribe(observer: Observer[F]): Subscription = {
-        self.subscribe(new Observer[E] {
-          override def onCompleted() = observer.onCompleted()
-          override def onError(error: Exception) = observer.onError(error)
-          override def onNext(event: E) = observer.onNext(f(event))
-        })
-      }
+  def set(subscription: Subscription) {
+    if (_closed) {
+      subscription.close()
+    } else {
+      _subscription = Some(subscription)
     }
   }
+
+  def close() {
+    _closed = true
+    _subscription foreach {_.close()}
+  }
+}
+
+trait Observable[+E] extends ObservableLike[E] {
+  self =>
+  import Observable._
 
   def collect[F](pf: PartialFunction[E, F]): Observable[F] = {
     for (event <- this if pf.isDefinedAt(event)) yield pf(event)
   }
 
-  def filter(p: E => Boolean): Observable[E] = new Observable[E] {
-    def subscribe(observer: Observer[E]): Subscription = {
+  def filter(p: E => Boolean): Observable[E] = createWithSubscription {
+    observer =>
       self.subscribe(new Observer[E] {
         override def onCompleted() = observer.onCompleted()
+
         override def onError(error: Exception) = observer.onError(error)
+
         override def onNext(event: E) = if (p(event)) observer.onNext(event)
       })
-    }
   }
 
-  def latest[F >: E]: Observed[F] = new LastObserved[F](this)
-
-  def observeOn(scheduler: Scheduler): Observable[E] = new Observable[E] {
-    def subscribe(observer: Observer[E]) = {
+  def map[F](f: E => F): Observable[F] = createWithSubscription {
+    observer =>
       self.subscribe(new Observer[E] {
-        override def onCompleted() = scheduler schedule { observer.onCompleted() }
-        override def onError(error: Exception) = scheduler schedule { observer.onError(error) }
-        override def onNext(event: E) = scheduler schedule { observer.onNext(event) }
+        override def onCompleted() = observer.onCompleted()
+
+        override def onError(error: Exception) = observer.onError(error)
+
+        override def onNext(event: E) = observer.onNext(f(event))
       })
-    }
+  }
+
+  def ofType[F](clazz: Class[F]): Observable[F] = {
+    for (value <- this if clazz.isInstance(value)) yield clazz.cast(value)
+  }
+
+  def withFilter(p: E => Boolean) = filter(p)
+
+  def observeOn(scheduler: Scheduler): Observable[E] = createWithSubscription {
+    observer =>
+      self.subscribe(new Observer[E] {
+        override def onCompleted() = scheduler schedule {
+          observer.onCompleted()
+        }
+
+        override def onError(error: Exception) = scheduler schedule {
+          observer.onError(error)
+        }
+
+        override def onNext(event: E) = scheduler schedule {
+          observer.onNext(event)
+        }
+      })
   }
 
   def perform(action: => Unit): Observable[E] = perform(_ => action)
-  def perform(action: E => Unit): Observable[E] = new Observable[E] {
-    def subscribe(observer: Observer[E]) = {
+
+  def perform(action: E => Unit): Observable[E] = createWithSubscription {
+    observer =>
       self.subscribe(new Observer[E] {
         override def onCompleted() = observer.onCompleted()
-        override def onError(error: Exception) = observer.onError(error)
-        override def onNext(event: E) = { action(event); observer.onNext(event) }
+
+        override def onError(error: Exception) = {
+          observer.onError(error)
+        }
+
+        override def onNext(event: E) = {
+          action(event);
+          observer.onNext(event)
+        }
       })
-    }
   }
 
-  def repeat: Observable[E] = new Subject[E] {
-    var subscription = noopSubscription
-    override def subscribe(observer: Observer[E]): Subscription = {
-      val result = super.subscribe(observer)
-      subscription = self.subscribe(this);
-      result
-    }
-    override def onCompleted() = { subscription.close(); subscription = self.subscribe(this) }
-  }
+  def take(n: Int): Observable[E] = createWithSubscription {
+    observer =>
+      self.subscribe(new Relay(observer) {
+        var count: Int = 0
 
-  def take(n: Int): Observable[E] = new Subject[E] {
-    var count: Int = 0
-    override def onSubscribe(observer: Observer[E]) = {
-      val subscription = self.subscribe(this)
-      () => subscription.close()
-    }
-    override def onNext(event: E) = {
-      if (count >= n) {
-        onCompleted()
-      } else {
-        count += 1
-        super.onNext(event)
-      }
-    }
+        override def onNext(event: E) = {
+          if (count < n) {
+            super.onNext(event)
+            count += 1
+          }
+          if (count >= n) {
+            super.onCompleted()
+          }
+        }
+      })
   }
 
 }
 
 object Observable {
-
-  def defaultOnCompleted() {}
-  def defaultOnError(error: Exception) {
-    throw error
-  }
-  def defaultOnNext[E](event: E) {}
-
   val noopSubscription = new Subscription {
     def close() {}
   }
 
-  def empty[E]: Observable[E] = {
-    Seq.empty.toObservable
+  def noop() {}
+
+  def create[T](delegate: Observer[T] => () => Unit): Observable[T] = new Observable[T] {
+    override def subscribe(observer: Observer[T]) = {
+      val unsubscribe = delegate(observer)
+      new Subscription {def close() = unsubscribe()}
+    }
   }
 
-  def singleton[E](event: E, scheduler: Scheduler = Scheduler.immediate): Observable[E] = {
+  def createWithSubscription[T](delegate: Observer[T] => Subscription): Observable[T] = new Observable[T] {
+    override def subscribe(observer: Observer[T]) = delegate(observer)
+  }
+
+  def empty[T](scheduler: Scheduler = Scheduler.immediate): Observable[T] = create {
+    observer =>
+      scheduler schedule {observer.onCompleted()}
+      noop
+  }
+
+  def value[E](event: E, scheduler: Scheduler = Scheduler.immediate): Observable[E] = {
     Seq(event).toObservable(scheduler)
   }
 
@@ -134,29 +150,25 @@ object Observable {
   def toSeq[E](observable: Observable[E]): Seq[E] = {
     val result = new mutable.ArrayBuffer[E]
     observable.subscribe(new Observer[E] {
-      override def onNext(event: E) { result append event }
+      override def onNext(event: E) {result append event}
     }).close()
     result
   }
 
   class TraversableWithToObservable[E](val traversable: Traversable[E]) {
-    def toObservable: Observable[E] = toObservable(Scheduler.immediate)
-    def toObservable(scheduler: Scheduler): Observable[E] = new Subject[E] {
-      override def onSubscribe(observer: Observer[E]) = {
-    	var cancel = false
+    def toObservable: Observable[E] = toObservable(Scheduler.currentThread)
+
+    def toObservable(scheduler: Scheduler): Observable[E] = create {
+      observer =>
+        var cancel = false
         scheduler.schedule {
-          try {
-            for (event <- traversable if !cancel) {
-              onNext(event)
-            }
-            if (!cancel)
-              onCompleted()
-          } catch {
-            case ex: Exception => onError(ex)
+          for (event <- traversable if !cancel) {
+            observer.onNext(event)
           }
+          if (!cancel)
+            observer.onCompleted()
         }
-        () => { cancel = true }
-      }
+        () => {cancel = true}
     }
   }
 

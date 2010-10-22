@@ -9,10 +9,16 @@ trait Scheduler {
   def schedule(action: => Unit): Subscription = scheduleAt(now)(action)
   def scheduleAt(at: Instant)(action: => Unit): Subscription = scheduleAfter(new Duration(now, at))(action)
   def scheduleAfter(delay: Duration)(action: => Unit): Subscription = scheduleAt(now plus delay)(action)
+
+  def scheduleRecursive(action: (() => Unit) => Unit): Subscription = {
+    schedule {
+      action { () => scheduleRecursive(action) }
+    }
+  }
 }
 
 object Scheduler {
-  val immediate: Scheduler = new ImmediateScheduler
+  implicit val immediate: Scheduler = new ImmediateScheduler
   val currentThread: Scheduler = new CurrentThreadScheduler
 }
 

@@ -19,9 +19,36 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
   val observer = mock[Observer[String]]
 
+  "Observable.create" should {
+    "invoke delegate on subscription with the observer as argument" in {
+      var delegateCalled = false
+      val observable = Observable.create { observer: Observer[String] =>
+        delegateCalled = true
+        observer.onNext("delegate")
+        Observable.noop
+      }
+      
+      observable.subscribe(observer)
+      
+      delegateCalled must be equalTo true
+      there was one(observer).onNext("delegate")
+    }
+
+    "invoke delegate's result when subscription is closed" in {
+      var actionCalled = false
+      val observable = Observable.create { observer: Observer[String] => () => actionCalled = true }
+      val subscription = observable.subscribe(observer)
+      
+      subscription.close()
+      
+      actionCalled must be equalTo true
+    }
+
+  }
+
   "traversables as observable" should {
 
-    "only invoke onComplete when empty" in {
+    "invoke onComplete when empty" in {
       emptyTraversable.toObservable.subscribe(observer)
 
       there was one(observer).onCompleted()
@@ -31,16 +58,6 @@ class ObservableTest extends Specification with JUnit with Mockito {
       multivaluedTraversable.toObservable.subscribe(observer)
 
       there was one(observer).onNext("first value") then one(observer).onNext("second value") then one(observer).onCompleted()
-      there were noMoreCallsTo(observer)
-    }
-    "invoke onError when an exception is raised" in {
-      val fail = new Traversable[String] {
-        def foreach[U](f: String => U) = throw ex
-      }
-
-      fail.toObservable.subscribe(observer)
-
-      there was one(observer).onError(ex)
       there were noMoreCallsTo(observer)
     }
     "stop producing values when the subscription is closed" in {
@@ -88,6 +105,15 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
       collected must be equalTo List("event")
     }
+
+    "allow filtering by type" in {
+      val observable = Seq(1, "event").toObservable
+
+      val filtered: Observable[String] = observable.ofType(classOf[String])
+
+      Observable.toSeq(filtered) must be equalTo Seq("event")
+    }
+
     "allow observing using for-comprehension" in {
       val events = Observable.toSeq(for (event <- observable) yield event)
 
@@ -98,20 +124,6 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
       events must be equalTo List("first value")
     }
-    "allow easy observation of last published value" in {
-      val subject = new Subject[String]
-      val observed = subject.latest
-
-      observed.current must be equalTo None
-
-      subject.onNext("hello")
-
-      observed.current must be equalTo Some("hello")
-
-      subject.onNext("world")
-
-      observed.current must be equalTo Some("world")
-    }
     //		"allow for nested for-comprehension" in {
     //			val events = Observable.asSeq(for (e1 <- observable; e2 <- observable) yield (e1, e2))
     //			events must have size 4
@@ -120,7 +132,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
   "empty observables" should {
     "only publish onCompleted" in {
-      Observable.empty.subscribe(observer)
+      Observable.empty().subscribe(observer)
 
       there was one(observer).onCompleted()
       there were noMoreCallsTo(observer)
@@ -129,7 +141,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
   "singleton observables" should {
     "only publish single event followed by onCompleted" in {
-      Observable.singleton("event").subscribe(observer)
+      Observable.value("event").subscribe(observer)
 
       there was one(observer).onNext("event") then one(observer).onCompleted()
       there were noMoreCallsTo(observer)
@@ -172,24 +184,28 @@ class ObservableTest extends Specification with JUnit with Mockito {
       Scheduler.currentThread schedule {
         var subscription: Subscription = null
 
-        subscription = sequence.observeOn(Scheduler.currentThread).take(3).perform { subscription.close() }.subscribe(observer)
+        subscription = sequence.take(3).perform { subscription.close() }.subscribe(observer)
       }
 
       there was one(observer).onNext(1)
       there were noMoreCallsTo(observer)
     }
-  }
 
-//  "repeat" should {
-//    "repeat singleton until unsubscribed" in {
-//      CurrentThreadScheduler.runOnCurrentThread {
-//        Console.println("Running with repeat")
-//        Observable.singleton("event", Scheduler.immediate).repeat.take(1).subscribe(observer)
-//        Console.println("Done with repeat")
-//      }
-//      there was one(observer).onNext("event") then one(observer).onCompleted()
-//      there were noMoreCallsTo(observer)
-//    }
-//  }
+    "have independent subscribers" in {
+      val observer1 = mock[Observer[Int]]
+      val observer2 = mock[Observer[Int]]
+      val subject = new Subject[Int]
+      val take = subject.take(100)
+      take.subscribe(observer1)
+      take.subscribe(observer2)
+
+      subject.onNext(1)
+
+      there was one(observer1).onNext(1)
+      there was one(observer2).onNext(1)
+      there were noMoreCallsTo(observer1)
+      there were noMoreCallsTo(observer2)
+    }
+  }
 
 }
