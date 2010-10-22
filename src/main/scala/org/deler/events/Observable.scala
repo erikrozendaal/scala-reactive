@@ -2,32 +2,6 @@ package org.deler.events
 
 import scala.collection._
 
-trait Subscription {
-  def close()
-}
-
-object NoopSubscription extends Subscription {
-  def close() = {}
-}
-
-class FutureSubscription extends Subscription {
-  private var _subscription: Option[Subscription] = None
-  private var _closed = false
-
-  def set(subscription: Subscription) {
-    if (_closed) {
-      subscription.close()
-    } else {
-      _subscription = Some(subscription)
-    }
-  }
-
-  def close() {
-    _closed = true
-    _subscription foreach {_.close()}
-  }
-}
-
 trait Observable[+E] extends ObservableLike[E] {
   self =>
   import Observable._
@@ -116,13 +90,29 @@ trait Observable[+E] extends ObservableLike[E] {
       })
   }
 
+  def materialize: Observable[Notification[E]] = createWithSubscription {
+    observer =>
+      self.subscribe(new Observer[E] {
+        override def onCompleted() = observer.onNext(OnCompleted)
+
+        override def onError(error: Exception) = observer.onNext(OnError(error))
+
+        override def onNext(value: E) = observer.onNext(OnNext(value))
+      })
+  }
+
+  // only works for immediate observables!
+  def toSeq: Seq[E] = {
+    val result = new mutable.ArrayBuffer[E]
+    self.subscribe(new Observer[E] {
+      override def onNext(event: E) {result append event}
+    }).close()
+    result
+  }
+
 }
 
 object Observable {
-  val noopSubscription = new Subscription {
-    def close() {}
-  }
-
   def noop() {}
 
   def create[T](delegate: Observer[T] => () => Unit): Observable[T] = new Observable[T] {
@@ -139,38 +129,53 @@ object Observable {
   def empty[T](scheduler: Scheduler = Scheduler.immediate): Observable[T] = create {
     observer =>
       scheduler schedule {observer.onCompleted()}
-      noop
+      Observable.noop
   }
 
   def value[E](event: E, scheduler: Scheduler = Scheduler.immediate): Observable[E] = {
     Seq(event).toObservable(scheduler)
   }
 
-  // only works for immediate observables!
-  def toSeq[E](observable: Observable[E]): Seq[E] = {
-    val result = new mutable.ArrayBuffer[E]
-    observable.subscribe(new Observer[E] {
-      override def onNext(event: E) {result append event}
-    }).close()
-    result
-  }
-
   class TraversableWithToObservable[E](val traversable: Traversable[E]) {
     def toObservable: Observable[E] = toObservable(Scheduler.currentThread)
 
-    def toObservable(scheduler: Scheduler): Observable[E] = create {
+    def toObservable(scheduler: Scheduler): Observable[E] = createWithSubscription {
       observer =>
-        var cancel = false
-        scheduler.schedule {
-          for (event <- traversable if !cancel) {
+        val subscription = new BooleanSubscription
+        def loop() {
+          for (event <- traversable) {
+            if (subscription.closed) {
+              return
+            }
             observer.onNext(event)
           }
-          if (!cancel)
+          if (!subscription.closed)
             observer.onCompleted()
         }
-        () => {cancel = true}
+
+        scheduler.schedule(loop)
+        subscription
     }
   }
 
   implicit def traversable2observable[E](traversable: Traversable[E]): TraversableWithToObservable[E] = new TraversableWithToObservable(traversable)
+
+  class DematerializeObservableWrapper[T](source: Observable[Notification[T]]) {
+    def dematerialize: Observable[T] = createWithSubscription { observer =>
+      val relay = new Relay(observer)
+      source.subscribe(new Observer[Notification[T]] {
+        override def onCompleted() = relay.onCompleted()
+        override def onError(error: Exception) = relay.onError(error)
+        override def onNext(notification: Notification[T]) = notification match {
+          case OnCompleted => onCompleted()
+          case OnError(error) => onError(error)
+          case OnNext(value) => relay.onNext(value)
+        }
+      })
+
+    }
+  }
+
+  implicit def dematerializeObservableWrapper[T](source: Observable[Notification[T]]) = new DematerializeObservableWrapper(source)
+
 }

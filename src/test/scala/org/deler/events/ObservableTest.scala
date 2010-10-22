@@ -3,13 +3,12 @@ package org.deler.events
 import org.junit.runner.RunWith
 import org.specs._
 import org.specs.mock.Mockito
-import org.specs.runner.{ JUnitSuiteRunner, JUnit }
+import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import org.mockito.Matchers._
 import scala.collection._
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableTest extends Specification with JUnit with Mockito {
-
   import Observable.traversable2observable
 
   val ex = new Exception("fail")
@@ -22,25 +21,26 @@ class ObservableTest extends Specification with JUnit with Mockito {
   "Observable.create" should {
     "invoke delegate on subscription with the observer as argument" in {
       var delegateCalled = false
-      val observable = Observable.create { observer: Observer[String] =>
-        delegateCalled = true
-        observer.onNext("delegate")
-        Observable.noop
+      val observable: Observable[String] = Observable.create {
+        observer =>
+          delegateCalled = true
+          observer.onNext("delegate")
+          Observable.noop
       }
-      
+
       observable.subscribe(observer)
-      
+
       delegateCalled must be equalTo true
       there was one(observer).onNext("delegate")
     }
 
     "invoke delegate's result when subscription is closed" in {
       var actionCalled = false
-      val observable = Observable.create { observer: Observer[String] => () => actionCalled = true }
+      val observable = Observable.create {observer: Observer[String] => () => actionCalled = true}
       val subscription = observable.subscribe(observer)
-      
+
       subscription.close()
-      
+
       actionCalled must be equalTo true
     }
 
@@ -73,11 +73,10 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
   "observables" should {
     val observable = Seq("event").toObservable
-    val failingObservable = new Observable[String] {
-      override def subscribe(observer: Observer[String]) = {
+    val failingObservable: Observable[Nothing] = Observable.createWithSubscription {
+      observer =>
         observer.onError(ex)
-        Observable.noopSubscription
-      }
+        NoopSubscription
     }
 
     "allow easy subscription using single onNext method" in {
@@ -101,7 +100,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
     "collect events" in {
       val observable = Seq(1, "event").toObservable
 
-      val collected = Observable.toSeq(observable collect { case x: String => x })
+      val collected = observable collect {case x: String => x} toSeq
 
       collected must be equalTo List("event")
     }
@@ -111,18 +110,18 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
       val filtered: Observable[String] = observable.ofType(classOf[String])
 
-      Observable.toSeq(filtered) must be equalTo Seq("event")
+      filtered.toSeq must be equalTo Seq("event")
     }
 
     "allow observing using for-comprehension" in {
-      val events = Observable.toSeq(for (event <- observable) yield event)
+      val events = for (event <- observable) yield event
 
-      events must be equalTo List("event")
+      events.toSeq must be equalTo List("event")
     }
     "allow filtering using for-comprehension" in {
-      val events = Observable.toSeq(for (event <- multivaluedTraversable.toObservable if event == "first value") yield event)
+      val events = for (event <- multivaluedTraversable.toObservable if event == "first value") yield event
 
-      events must be equalTo List("first value")
+      events.toSeq must be equalTo List("first value")
     }
     //		"allow for nested for-comprehension" in {
     //			val events = Observable.asSeq(for (e1 <- observable; e2 <- observable) yield (e1, e2))
@@ -184,7 +183,9 @@ class ObservableTest extends Specification with JUnit with Mockito {
       Scheduler.currentThread schedule {
         var subscription: Subscription = null
 
-        subscription = sequence.take(3).perform { subscription.close() }.subscribe(observer)
+        subscription = sequence.take(3).perform {
+          subscription.close()
+        }.subscribe(observer)
       }
 
       there was one(observer).onNext(1)
@@ -205,6 +206,78 @@ class ObservableTest extends Specification with JUnit with Mockito {
       there was one(observer2).onNext(1)
       there were noMoreCallsTo(observer1)
       there were noMoreCallsTo(observer2)
+    }
+  }
+
+  "materialized observables" should {
+    val observable = new ReplaySubject[String]
+    "provide each value in the stream as an instance of Notification" in {
+      observable.onNext("hello")
+      observable.onCompleted()
+
+      val result = observable.materialize.toSeq
+
+      result must be equalTo Seq(OnNext("hello"), OnCompleted)
+    }
+
+    "provide the error stream as an instance of OnError" in {
+      observable.onError(ex)
+
+      val result = observable.materialize.toSeq
+
+      result must be equalTo Seq(OnError(ex))
+    }
+  }
+
+  "dematerialized observables" should {
+    val observable = new Subject[Notification[String]]
+
+    "map each OnNext value to Observer.onNext" in {
+      observable.dematerialize.subscribe(observer)
+
+      observable.onNext(OnNext("first"))
+      observable.onNext(OnNext("second"))
+
+      there was one(observer).onNext("first") then one(observer).onNext("second")
+      there were noMoreCallsTo(observer)
+    }
+
+    "map OnCompleted to Observer.onCompleted" in {
+      observable.dematerialize.subscribe(observer)
+
+      observable.onNext(OnCompleted)
+
+      there was one(observer).onCompleted()
+      there were noMoreCallsTo(observer)
+    }
+
+    "map OnError to Observer.onError" in {
+      observable.dematerialize.subscribe(observer)
+
+      observable.onNext(OnError(ex))
+
+      there was one(observer).onError(ex)
+      there were noMoreCallsTo(observer)
+    }
+
+    "stop once OnCompleted has been processed" in {
+      observable.dematerialize.subscribe(observer)
+
+      observable.onNext(OnCompleted)
+      observable.onNext(OnNext("ignored"))
+
+      there was one(observer).onCompleted()
+      there were noMoreCallsTo(observer)
+    }
+
+    "stop once OnError has been processed" in {
+      observable.dematerialize.subscribe(observer)
+
+      observable.onNext(OnError(ex))
+      observable.onNext(OnNext("ignored"))
+
+      there was one(observer).onError(ex)
+      there were noMoreCallsTo(observer)
     }
   }
 

@@ -22,7 +22,7 @@ class CurrentThreadScheduler extends Scheduler {
         schedule.enqueue(at, () => action)
         runQueued(schedule)
       }
-      Observable.noopSubscription
+      NoopSubscription
     }
   }
 
