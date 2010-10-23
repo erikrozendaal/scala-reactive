@@ -16,7 +16,7 @@ trait Subscription {
 }
 
 /**
- *  A simple subscription that does not do anything when closed.
+ * A simple subscription that does not do anything when closed.
  */
 object NullSubscription extends Subscription {
   def close() = {}

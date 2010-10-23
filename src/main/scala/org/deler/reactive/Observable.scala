@@ -268,11 +268,7 @@ object Observable {
 
           override def onError(error: Exception) = relay.onError(error)
 
-          override def onNext(notification: Notification[T]) = notification match {
-            case OnCompleted => onCompleted()
-            case OnError(error) => onError(error)
-            case OnNext(value) => relay.onNext(value)
-          }
+          override def onNext(notification: Notification[T]) = notification.accept(relay)
         })
 
     }
