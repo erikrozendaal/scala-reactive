@@ -55,6 +55,11 @@ trait Observable[+A] {
   }
 
   /**
+   * flatMap
+   */
+//  def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(self.map(f)).flatten
+  
+  /**
    * A new observable only containing the values from this observable for which the predicate is satisfied.
    */
   def filter(p: A => Boolean): Observable[A] = createWithSubscription {
@@ -222,6 +227,14 @@ object Observable {
   }
 
   implicit def traversableToObservableWrapper[E](traversable: Traversable[E]): TraversableToObservableWrapper[E] = new TraversableToObservableWrapper(traversable)
+
+//  class NestedObservableWrapper[T](source: Observable[Observable[T]]) {
+//    def flatten: Observable[T] = createWithSubscription {
+//      observer => NullSubscription
+//    }
+//  }
+//
+//  implicit def nestedObservableWrapper[T](source: Observable[Observable[T]]) = new NestedObservableWrapper(source)
 
   class DematerializeObservableWrapper[T](source: Observable[Notification[T]]) {
     def dematerialize: Observable[T] = createWithSubscription {

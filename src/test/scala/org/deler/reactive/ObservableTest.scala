@@ -4,7 +4,6 @@ import org.junit.runner.RunWith
 import org.specs._
 import org.specs.mock.Mockito
 import org.specs.runner.{JUnitSuiteRunner, JUnit}
-import org.mockito.Matchers._
 import scala.collection._
 
 @RunWith(classOf[JUnitSuiteRunner])
@@ -76,7 +75,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
     val failingObservable: Observable[Nothing] = Observable.createWithSubscription {
       observer =>
         observer.onError(ex)
-        NoopSubscription
+        NullSubscription
     }
 
     "allow easy subscription using single onNext method" in {
@@ -117,10 +116,12 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
       events.toSeq must be equalTo List("first value")
     }
-    //		"allow for nested for-comprehension" in {
-    //			val events = Observable.asSeq(for (e1 <- observable; e2 <- observable) yield (e1, e2))
-    //			events must have size 4
-    //		}
+    
+//    "allow for nested for-comprehension" in {
+//      val events = for (e1 <- observable; e2 <- observable) yield (e1, e2)
+//
+//      events.toSeq must be equalTo List(("event", "event"))
+//    }
   }
 
   "empty observables" should {

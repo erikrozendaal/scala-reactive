@@ -32,7 +32,7 @@ class ImmediateScheduler extends Scheduler {
 
   override def schedule(action: => Unit): Subscription = {
     action
-    NoopSubscription
+    NullSubscription
   }
 
   override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
