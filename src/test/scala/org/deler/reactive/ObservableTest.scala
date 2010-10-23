@@ -9,7 +9,7 @@ import scala.collection._
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableTest extends Specification with JUnit with Mockito {
-  import Observable.traversable2observable
+  import Observable.traversableToObservableWrapper
 
   val ex = new Exception("fail")
 
@@ -64,7 +64,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
       Scheduler.currentThread schedule {
         var subscription: Subscription = null
 
-        subscription = multivaluedTraversable.toObservable(Scheduler.currentThread).perform(subscription.close()).subscribe(observer)
+        subscription = multivaluedTraversable.toObservable(Scheduler.currentThread).perform(_ => subscription.close()).subscribe(observer)
       }
       there was one(observer).onNext("first value")
       there were noMoreCallsTo(observer)
@@ -89,12 +89,6 @@ class ObservableTest extends Specification with JUnit with Mockito {
       observable subscribe (onCompleted = () => observer.onCompleted(), onNext = observer.onNext(_))
 
       there was one(observer).onNext("event") then one(observer).onCompleted()
-      there were noMoreCallsTo(observer)
-    }
-    "allow easy subscription using single onError method" in {
-      failingObservable.subscribe(onError = observer.onError(_))
-
-      there was one(observer).onError(ex)
       there were noMoreCallsTo(observer)
     }
     "collect events" in {
@@ -183,9 +177,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
       Scheduler.currentThread schedule {
         var subscription: Subscription = null
 
-        subscription = sequence.take(3).perform {
-          subscription.close()
-        }.subscribe(observer)
+        subscription = sequence.take(3).perform(_ => subscription.close()).subscribe(observer)
       }
 
       there was one(observer).onNext(1)

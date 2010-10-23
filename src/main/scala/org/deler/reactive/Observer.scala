@@ -1,29 +1,22 @@
 package org.deler.reactive
 
+/**
+ * Observers can subscribe to [[org.deler.reactive.Observable]]s and will be notified of zero or more values, optionally
+ * followed by an completion or error.
+ */
 trait Observer[-T] {
-  def onCompleted() {}
-  def onError(error: Exception) {}
+  /**
+   * Invoked for every value produced by an <code>Observable</code>
+   */
   def onNext(value: T) {}
-}
 
-class Relay[-T](target: Observer[T]) extends Observer[T] {
-  private var completed = false
+  /**
+   * Invoked when an error is produced by an <code>Observable</code>. No further notifications will happen.
+   */
+  def onError(error: Exception) {}
 
-  override def onCompleted() {
-    if (completed) return
-    completed = true
-    target.onCompleted()
-  }
-
-  override def onError(error: Exception) {
-    if (completed) return
-    completed = true
-    target.onError(error);
-  }
-
-  override def onNext(value: T) {
-    if (completed) return
-    target.onNext(value)
-  }
-  
+  /**
+   * Invoked when an <code>Observable</code> completes. No further notifications will happen.
+   */
+  def onCompleted() {}
 }
