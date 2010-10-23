@@ -4,6 +4,7 @@ SCALA REACTIVE
 Small framework for reactive programming using Scala. Current implementation
 is inspired by the Reactive Extensions by Microsoft.
 
+
 DOCUMENTATION
 -------------
 
@@ -12,14 +13,18 @@ There is some Scaladoc of the API. Starting places would be the Observable and O
 A good introduction to the .NET and JavaScript RX frameworks that inspired Scala Reactive can be
 found at http://blogs.msdn.com/b/rxteam/archive/2010/07/15/rx-hands-on-labs-published.aspx.
 
+Another interesting paper on Scala based reactive programming can be found at:
+http://lamp.epfl.ch/~imaier/pub/DeprecatingObserversTR2010.pdf
+
+
 EXAMPLES
 --------
 
 See the unit tests and the org.deler.reactive.examples package for some examples.
+
 
 LIMITATIONS
 -----------
 
 - Not thread-safe, so don't share between threads.
 - Scheduling and error handling still needs work.
- 
