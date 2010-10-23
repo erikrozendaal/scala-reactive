@@ -7,7 +7,7 @@ is inspired by the Reactive Extensions by Microsoft.
 EXAMPLES
 --------
 
-See org.deler.reactive.examples directory.
+See org.deler.reactive.examples package.
 
 LIMITATIONS
 -----------
