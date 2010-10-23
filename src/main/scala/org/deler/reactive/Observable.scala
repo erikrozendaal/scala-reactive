@@ -88,27 +88,24 @@ trait Observable[+A] {
   }
 
   /**
+   * A new observable that materializes each notification of this observable as a [[org.deler.reactive.Notification]].
+   */
+  def materialize: Observable[Notification[A]] = createWithSubscription {
+    observer =>
+      self.subscribe(new Observer[A] {
+        override def onCompleted() = observer.onNext(OnCompleted)
+
+        override def onError(error: Exception) = observer.onNext(OnError(error))
+
+        override def onNext(value: A) = observer.onNext(OnNext(value))
+      })
+  }
+
+  /**
    * A new observable that only contains the values from this observable which are instances of the specified type.
    */
   def ofType[B](clazz: Class[B]): Observable[B] = {
     for (value <- this if clazz.isInstance(value)) yield clazz.cast(value)
-  }
-
-  def observeOn(scheduler: Scheduler): Observable[A] = createWithSubscription {
-    observer =>
-      self.subscribe(new Observer[A] {
-        override def onCompleted() = scheduler schedule {
-          observer.onCompleted()
-        }
-
-        override def onError(error: Exception) = scheduler schedule {
-          observer.onError(error)
-        }
-
-        override def onNext(event: A) = scheduler schedule {
-          observer.onNext(event)
-        }
-      })
   }
 
   /**
@@ -130,6 +127,9 @@ trait Observable[+A] {
       })
   }
 
+  /**
+   * A new observable that only produces up to <code>n</code> values from this observable and then completes.
+   */
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>
       self.subscribe(new RelayObserver(observer) {
@@ -144,17 +144,6 @@ trait Observable[+A] {
             super.onCompleted()
           }
         }
-      })
-  }
-
-  def materialize: Observable[Notification[A]] = createWithSubscription {
-    observer =>
-      self.subscribe(new Observer[A] {
-        override def onCompleted() = observer.onNext(OnCompleted)
-
-        override def onError(error: Exception) = observer.onNext(OnError(error))
-
-        override def onNext(value: A) = observer.onNext(OnNext(value))
       })
   }
 
