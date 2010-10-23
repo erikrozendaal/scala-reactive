@@ -117,11 +117,12 @@ class ObservableTest extends Specification with JUnit with Mockito {
       events.toSeq must be equalTo List("first value")
     }
     
-//    "allow for nested for-comprehension" in {
-//      val events = for (e1 <- observable; e2 <- observable) yield (e1, e2)
-//
-//      events.toSeq must be equalTo List(("event", "event"))
-//    }
+    "allow for nested for-comprehension" in {
+      val observable = List("a", "b").toObservable
+      val events = for (e1 <- observable; e2 <- observable) yield (e1, e2)
+
+      events.toSeq must be equalTo List(("a", "a"), ("a", "b"), ("b", "a"), ("b", "b"))
+    }
   }
 
   "empty observables" should {

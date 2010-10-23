@@ -57,8 +57,8 @@ trait Observable[+A] {
   /**
    * flatMap
    */
-//  def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(self.map(f)).flatten
-  
+  def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(self.map(f)).flatten
+
   /**
    * A new observable only containing the values from this observable for which the predicate is satisfied.
    */
@@ -228,13 +228,36 @@ object Observable {
 
   implicit def traversableToObservableWrapper[E](traversable: Traversable[E]): TraversableToObservableWrapper[E] = new TraversableToObservableWrapper(traversable)
 
-//  class NestedObservableWrapper[T](source: Observable[Observable[T]]) {
-//    def flatten: Observable[T] = createWithSubscription {
-//      observer => NullSubscription
-//    }
-//  }
-//
-//  implicit def nestedObservableWrapper[T](source: Observable[Observable[T]]) = new NestedObservableWrapper(source)
+  class NestedObservableWrapper[T](source: Observable[Observable[T]]) {
+    def flatten: Observable[T] = createWithSubscription {
+      observer =>
+        val subscription = new CompositeSubscription
+        subscription.add(source.subscribe(
+          onNext = {
+            value =>
+              val holder = new MutableSubscription
+              subscription.add(holder)
+              holder.set(value.subscribe(new Observer[T] {
+                override def onCompleted() {
+                  subscription.remove(holder)
+                }
+
+                override def onError(error: Exception) {
+                  observer.onError(error)
+                  subscription.close()
+                }
+
+                override def onNext(value: T) {
+                  observer.onNext(value)
+                }
+              }))
+          },
+          onError = {error => observer.onError(error); subscription.close()}))
+        subscription
+    }
+  }
+
+  implicit def nestedObservableWrapper[T](source: Observable[Observable[T]]) = new NestedObservableWrapper(source)
 
   class DematerializeObservableWrapper[T](source: Observable[Notification[T]]) {
     def dematerialize: Observable[T] = createWithSubscription {
