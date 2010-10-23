@@ -1,0 +1,17 @@
+SCALA REACTIVE
+==============
+
+Small framework for reactive programming using Scala. Current implementation
+is inspired by the Reactive Extensions by Microsoft.
+
+EXAMPLES
+--------
+
+See org.deler.reactive.examples directory.
+
+LIMITATIONS
+-----------
+
+- Not thread-safe, so don't share between threads.
+- Scheduling and error handling still needs work.
+ 
