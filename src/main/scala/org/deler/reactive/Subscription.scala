@@ -8,11 +8,15 @@ package org.deler.reactive
  * Subscriptions must be idempotent (so <code>close</code> can be called multiple times without ill effects).
  */
 trait Subscription {
+
+  /**
+   * Close (or cancel) the subscription. This operation is idempotent.
+   */
   def close()
 }
 
 /**
- * A simple subscription that does not do anything when closed.
+ *  A simple subscription that does not do anything when closed.
  */
 object NullSubscription extends Subscription {
   def close() = {}
