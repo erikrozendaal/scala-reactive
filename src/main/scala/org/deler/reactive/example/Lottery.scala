@@ -1,6 +1,6 @@
-package org.deler.events.example
+package org.deler.reactive.example
 
-import org.deler.events._
+import org.deler.reactive._
 import java.util.UUID
 
 trait LotteryEvent {

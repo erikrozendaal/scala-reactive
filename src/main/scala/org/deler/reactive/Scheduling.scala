@@ -1,4 +1,4 @@
-package org.deler.events
+package org.deler.reactive
 
 import org.joda.time._
 import scala.collection._
@@ -58,7 +58,7 @@ private[this] class ScheduledAction(val time: Instant, val sequence: Long, val a
   }
 }
 
-private[events] class Schedule { self =>
+private[reactive] class Schedule { self =>
 
   private var sequence: Long = 0L
   private var schedule = SortedSet[ScheduledAction]()

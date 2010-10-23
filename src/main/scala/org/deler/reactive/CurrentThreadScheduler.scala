@@ -1,4 +1,4 @@
-package org.deler.events
+package org.deler.reactive
 
 import org.joda.time.Instant
 

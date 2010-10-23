@@ -1,4 +1,4 @@
-package org.deler.events
+package org.deler.reactive
 
 import org.junit.runner.RunWith
 import org.specs._

@@ -1,4 +1,4 @@
-package org.deler.events
+package org.deler.reactive
 
 sealed abstract class Notification[+T]
 case object OnCompleted extends Notification[Nothing]
