@@ -116,12 +116,31 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
       events.toSeq must be equalTo List("first value")
     }
-    
+
     "allow for nested for-comprehension" in {
       val observable = List("a", "b").toObservable
       val events = for (e1 <- observable; e2 <- observable) yield (e1, e2)
 
       events.toSeq must be equalTo List(("a", "a"), ("a", "b"), ("b", "a"), ("b", "b"))
+    }
+
+    "flatten should invoke onCompleted after all observables have completed" in {
+      val generator = new Subject[Subject[String]]
+      val first = new Subject[String]
+      val second = new Subject[String]
+      generator.flatten.subscribe(observer)
+
+      generator.onNext(first)
+      first.onNext("first value")
+      first.onNext("second value")
+      generator.onNext(second)
+      second.onNext("third value")
+      second.onCompleted()
+      generator.onCompleted()
+      first.onNext("fourth value")
+      first.onCompleted()
+
+      there was one(observer).onNext("first value") then one(observer).onNext("second value") then one(observer).onNext("third value") then one(observer).onNext("fourth value") then one(observer).onCompleted()
     }
   }
 
@@ -200,6 +219,58 @@ class ObservableTest extends Specification with JUnit with Mockito {
       there was one(observer2).onNext(1)
       there were noMoreCallsTo(observer1)
       there were noMoreCallsTo(observer2)
+    }
+  }
+
+  "concatenated observables" should {
+    val first = new Subject[String]
+    val second = new Subject[String]
+    val result = new ReplaySubject[Notification[Any]]
+    val subscription = (first ++ second).materialize.subscribe(result)
+
+    "first provide the values from the first observable followed by the second observable" in {
+      first.onNext("first")
+      first.onNext("second")
+      first.onCompleted()
+      second.onNext("third")
+      second.onCompleted()
+
+      result.toSeq must be equalTo Seq(OnNext("first"), OnNext("second"), OnNext("third"), OnCompleted)
+    }
+
+    "should only subscribe to second observable after first has completed" in {
+      first.onNext("first")
+      second.onNext("ignored")
+      first.onCompleted()
+      second.onNext("second")
+      second.onCompleted()
+
+      result.toSeq must be equalTo Seq(OnNext("first"), OnNext("second"), OnCompleted)
+    }
+
+    "terminate on error in first observable" in {
+      first.onError(ex)
+      second.onNext("unseen")
+
+      result.toSeq must be equalTo Seq(OnError(ex))
+    }
+
+    "terminate when subscription is closed in first sequence" in {
+      subscription.close()
+      first.onNext("first")
+      first.onCompleted()
+      second.onNext("second")
+
+      result.toSeq must beEmpty
+    }
+
+    "terminate when subscription is closed in second sequence" in {
+      first.onNext("first")
+      first.onCompleted()
+      subscription.close()
+      second.onNext("second")
+
+      result.toSeq must be  equalTo Seq(OnNext("first"))
     }
   }
 

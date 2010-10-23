@@ -113,6 +113,8 @@ class CompositeSubscription extends Subscription {
     subscription.close()
   }
 
+  def isEmpty: Boolean = _subscriptions.isEmpty
+
   def close() {
     _closed = true
     _subscriptions foreach {_.close()}

@@ -55,6 +55,19 @@ trait Observable[+A] {
   }
 
   /**
+   * Appends <code>that</code> observable to this observable.
+   */
+  def ++[B >: A](that: Observable[B]): Observable[B] = createWithSubscription {
+    observer =>
+      val result = new MutableSubscription
+      result.set(self.subscribe(
+        onNext = {value => observer.onNext(value)},
+        onError = {error => observer.onError(error); result.close},
+        onCompleted = {() => result.set(that.subscribe(observer))}))
+      result
+  }
+
+  /**
    * flatMap
    */
   def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(self.map(f)).flatten
@@ -231,20 +244,25 @@ object Observable {
   class NestedObservableWrapper[T](source: Observable[Observable[T]]) {
     def flatten: Observable[T] = createWithSubscription {
       observer =>
-        val subscription = new CompositeSubscription
-        subscription.add(source.subscribe(
+        val result = new CompositeSubscription
+        val generatorSubscription = new MutableSubscription
+        result.add(generatorSubscription)
+        generatorSubscription.set(source.subscribe(
           onNext = {
             value =>
               val holder = new MutableSubscription
-              subscription.add(holder)
+              result.add(holder)
               holder.set(value.subscribe(new Observer[T] {
                 override def onCompleted() {
-                  subscription.remove(holder)
+                  result.remove(holder)
+                  if (result.isEmpty) {
+                    observer.onCompleted()
+                  }
                 }
 
                 override def onError(error: Exception) {
                   observer.onError(error)
-                  subscription.close()
+                  result.close()
                 }
 
                 override def onNext(value: T) {
@@ -252,8 +270,15 @@ object Observable {
                 }
               }))
           },
-          onError = {error => observer.onError(error); subscription.close()}))
-        subscription
+          onError = {error => observer.onError(error); result.close()},
+          onCompleted = {
+            () =>
+              result.remove(generatorSubscription)
+              if (result.isEmpty) {
+                observer.onCompleted()
+              }
+          }))
+        result
     }
   }
 
