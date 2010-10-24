@@ -67,12 +67,12 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       count must be equalTo 1
       subject.now must be equalTo INITIAL.plus(1000)
     }
-    "run actions upto the specified instant (inclusive)" in {
+    "run actions upto the specified instant (exclusive)" in {
       subject.scheduleAfter(new Duration(1000L)) {action(INITIAL.plus(1000))}
 
       subject.runTo(INITIAL.plus(1000))
 
-      count must be equalTo 1
+      count must be equalTo 0
       subject.now must be equalTo INITIAL.plus(1000)
     }
     "not run actions after the specified instant" in {

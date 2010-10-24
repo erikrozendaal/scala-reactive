@@ -90,15 +90,19 @@ private[reactive] class Schedule {
     }
   }
 
-  def dequeue(noLaterThan: Instant): Option[ScheduledAction] = {
-    if (schedule.isEmpty || (schedule.head.time isAfter noLaterThan)) {
-      None
-    } else {
+  def dequeue(until: Instant): Option[ScheduledAction] = {
+    if (!schedule.isEmpty && (schedule.head.time isBefore until)) {
       dequeue
+    } else {
+      None
     }
   }
 }
 
+/**
+ * A scheduler that doesn't run actions until activated and then runs through the actions as quickly as possible,
+ * adjusting virtual time as needed.
+ */
 class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler {
   self =>
 
@@ -118,6 +122,9 @@ class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler
     scheduled.action()
   }
 
+  /**
+   * Run until the schedule is empty.
+   */
   def run() {
     def loop() {
       scheduleAt.dequeue match {
@@ -131,6 +138,9 @@ class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler
     loop()
   }
 
+  /**
+   * Run until the schedule is empty or we arrived at the specified <code>instant</code>.
+   */
   def runTo(instant: Instant) {
     def loop() {
       scheduleAt.dequeue(instant) match {
@@ -146,6 +156,10 @@ class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler
 
 }
 
+/**
+ * A virtual scheduler that ensures actions scheduled inside other actions cannot occur at the same 'virtual' time.
+ * The time is increased by one before scheduling, allowing you to trace casuality.
+ */
 class TestScheduler extends VirtualScheduler(new Instant(0)) {
   override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
     val t = if (!(at isAfter now)) {
