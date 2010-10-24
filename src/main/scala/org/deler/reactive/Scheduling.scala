@@ -18,8 +18,8 @@ trait Scheduler {
       val subscription = new FutureSubscription
       result.add(subscription)
       subscription.set(schedule {
-        action(self)
         result.remove(subscription)
+        action(self)
       })
     }
     self()
@@ -99,7 +99,7 @@ private[reactive] class Schedule {
   }
 }
 
-class VirtualScheduler(initialNow: Instant = new Instant(0)) extends Scheduler {
+class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler {
   self =>
 
   private var scheduleAt = new Schedule
@@ -119,42 +119,41 @@ class VirtualScheduler(initialNow: Instant = new Instant(0)) extends Scheduler {
   }
 
   def run() {
-    scheduleAt.dequeue match {
-      case None =>
-      case Some(scheduled) => {
-        runScheduled(scheduled);
-        run()
+    def loop() {
+      scheduleAt.dequeue match {
+        case None =>
+        case Some(scheduled) => {
+          runScheduled(scheduled);
+          loop()
+        }
       }
     }
+    loop()
   }
 
   def runTo(instant: Instant) {
-    scheduleAt.dequeue(instant) match {
-      case None => _now = instant
-      case Some(scheduled) => {
-        runScheduled(scheduled)
-        runTo(instant)
+    def loop() {
+      scheduleAt.dequeue(instant) match {
+        case None => _now = instant
+        case Some(scheduled) => {
+          runScheduled(scheduled)
+          runTo(instant)
+        }
       }
     }
+    loop()
   }
 
 }
 
 class TestScheduler extends VirtualScheduler(new Instant(0)) {
-  override def schedule(action: => Unit): Subscription = {
-    super.scheduleAt(now plus 100)(action)
-  }
-
   override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
-    if (!(at isAfter now)) {
-      super.scheduleAt(at plus 1)(action)
+    val t = if (!(at isAfter now)) {
+      now plus 1
     } else {
-      super.scheduleAt(at)(action)
+      at
     }
+    super.scheduleAt(t)(action)
   }
 
-  override def runScheduled(scheduled: ScheduledAction) {
-    super.runScheduled(scheduled)
-    _now = _now plus 100
-  }
 }

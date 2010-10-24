@@ -55,22 +55,22 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
       scheduler.run()
 
-      observer.notifications must be equalTo Seq(100 -> OnCompleted)
+      observer.notifications must be equalTo Seq(1 -> OnCompleted)
     }
     "invoke onNext for each contained element followed by onComplete" in {
       Seq("first", "second").toObservable(scheduler).subscribe(observer)
 
       scheduler.run()
 
-      observer.notifications must be equalTo Seq(100 -> OnNext("first"), 200 -> OnNext("second"), 300 -> OnCompleted)
+      observer.notifications must be equalTo Seq(1 -> OnNext("first"), 2 -> OnNext("second"), 3 -> OnCompleted)
     }
     "stop producing values when the subscription is closed" in {
       val subscription = Seq("first", "second").toObservable(scheduler).subscribe(observer)
-      scheduler.scheduleAt(new Instant(150)) {subscription.close()}
+      scheduler.scheduleAt(new Instant(2)) {subscription.close()}
 
       scheduler.run()
 
-      observer.notifications must be equalTo Seq(100 -> OnNext("first"))
+      observer.notifications must be equalTo Seq(1 -> OnNext("first"))
     }
   }
 
@@ -87,14 +87,14 @@ class ObservableTest extends Specification with JUnit with Mockito {
       observable subscribe (onNext = observer onNext _)
       scheduler.run()
 
-      observer.notifications must be equalTo Seq(100 -> OnNext("value"))
+      observer.notifications must be equalTo Seq(1 -> OnNext("value"))
     }
 
     "allow easy subscription using multiple methods" in {
       observable subscribe (onCompleted = () => observer.onCompleted(), onNext = observer.onNext(_))
       scheduler.run()
 
-      observer.notifications must be equalTo Seq(100 -> OnNext("value"), 200 -> OnCompleted)
+      observer.notifications must be equalTo Seq(1 -> OnNext("value"), 2 -> OnCompleted)
     }
 
     "collect events" in {
@@ -117,7 +117,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
       (for (event <- observable) yield event).subscribe(observer)
       scheduler.run()
 
-      observer.notifications must be equalTo Seq(100 -> OnNext("value"), 200 -> OnCompleted)
+      observer.notifications must be equalTo Seq(1 -> OnNext("value"), 2 -> OnCompleted)
     }
 
     "allow filtering using for-comprehension" in {
@@ -126,7 +126,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
       (for (event <- observable if event == "first") yield event).subscribe(observer)
       scheduler.run()
 
-      observer.notifications must be equalTo Seq(100 -> OnNext("first"), 300 -> OnCompleted)
+      observer.notifications must be equalTo Seq(1 -> OnNext("first"), 3 -> OnCompleted)
     }
 
     "allow for nested for-comprehension" in {
@@ -137,16 +137,22 @@ class ObservableTest extends Specification with JUnit with Mockito {
       scheduler.run()
 
       observer.notifications must be equalTo Seq(
-        // 0 -> observable1 schedules onNext("a")
-        // 100 -> observable1 produces onNext("a") and schedules onNext("b")
-        200 -> OnNext("ac"), // first observable2 produces OnNext("c") and schedules onNext("d")
-        // 300 -> observable1 produces onNext("b") and schedules onCompleted
-        400 -> OnNext("ad"), // first observable2 produces onNext("d") and schedules onCompleted
-        500 -> OnNext("bc"), // second observable2 procues onNext("c") and schedules onNext("d")
-        // 600 -> observable1 produces onCompleted
-        // 700 -> first observable2 produces onCompleted
-        800 -> OnNext("bd"), // second observable2 produces onNext("d") and schedules onCompleted
-        900 -> OnCompleted) // second observable2 produces onCompleted
+        // 1 -> observable1 produces onNext("a") and schedules onNext("b")
+        // 1 -> first observable2 schedules onNext("c")
+        // 2 -> observable1 produces onNext("b") and schedules onCompleted
+        // 2 -> first observable2 produces OnNext("c") and schedules onNext("d")
+        2 -> OnNext("ac"),
+        // 2 -> second observable2 schedules onNext("c")
+        // 3 -> observable1 produces onCompleted
+        // 3 -> first observable2 produces onNext("d") and schedules onCompleted
+        3 -> OnNext("ad"),
+        // 3 -> second observable2 produces onNext("c") and schedules onNext("d")
+        3 -> OnNext("bc"),
+        // 4 -> first observable2 produces onCompleted
+        // 4 -> second observable2 produces onNext("d") and schedules onCompleted
+        4 -> OnNext("bd"),
+        // 5 -> second observable2 produces onCompleted
+        5 -> OnCompleted)
     }
 
     "stop nested for-comprehension on unsubscribe" in {
@@ -154,26 +160,43 @@ class ObservableTest extends Specification with JUnit with Mockito {
       val observable2 = Seq("c", "d").toObservable(scheduler)
 
       val subscription = (for (e1 <- observable1; e2 <- observable2) yield e1 + e2).subscribe(observer)
-      scheduler.scheduleAt(new Instant(450)) {subscription.close()}
+      scheduler.scheduleAt(new Instant(4)) {subscription.close()}
       scheduler.run()
 
       observer.notifications must be equalTo Seq(
-        200 -> OnNext("ac"),
-        400 -> OnNext("ad"),
-        500 -> OnNext("bc")) // why???
+        2 -> OnNext("ac"),
+        3 -> OnNext("ad"),
+        3 -> OnNext("bc"))
     }
 
     "stop flatten on unsubscribe" in {
       val observable = Seq(Seq("a", "b").toObservable(scheduler), Seq("c", "d").toObservable(scheduler)).toObservable(scheduler)
 
       val subscription = observable.flatten.subscribe(observer)
-      scheduler.scheduleAt(new Instant(450)) {subscription.close()}
+      scheduler.scheduleAt(new Instant(4)) {subscription.close()}
       scheduler.run()
 
       observer.notifications must be equalTo Seq(
-        200 -> OnNext("a"),
-        400 -> OnNext("b"),
-        500 -> OnNext("c")) // why???
+        2 -> OnNext("a"),
+        3 -> OnNext("b"),
+        3 -> OnNext("c"))
+    }
+
+    "pass values from flattened observables in the order produced" in {
+      val observable1 = Seq("a", "b").toObservable(scheduler)
+      val observable2 = Seq("c", "d", "e").toObservable(scheduler)
+
+      val subscription = (for (e1 <- observable1; e2 <- observable2) yield e1 + e2).subscribe(observer)
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(
+        2 -> OnNext("ac"),
+        3 -> OnNext("ad"),
+        3 -> OnNext("bc"),
+        4 -> OnNext("ae"),
+        4 -> OnNext("bd"),
+        5 -> OnNext("be"),
+        6 -> OnCompleted)
     }
 
   }
@@ -204,7 +227,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
     "only publish onCompleted" in {
       scheduler.run()
 
-      observer.notifications must be equalTo Seq((100 -> OnCompleted))
+      observer.notifications must be equalTo Seq(1 -> OnCompleted)
     }
 
     "not publish anything when subscription is closed" in {
@@ -225,17 +248,17 @@ class ObservableTest extends Specification with JUnit with Mockito {
     "only publish single event followed by onCompleted" in {
       scheduler.run()
 
-      observer.notifications must be equalTo Seq((100 -> OnNext("event")), (200 -> OnCompleted))
+      observer.notifications must be equalTo Seq(1 -> OnNext("event"), (2 -> OnCompleted))
     }
 
     "stop publishing when subscription is closed" in {
-      scheduler.scheduleAt(new Instant(150)) {
+      scheduler.scheduleAt(new Instant(2)) {
         subscription.close()
       }
 
       scheduler.run()
 
-      observer.notifications must be equalTo Seq((100 -> OnNext("event")))
+      observer.notifications must be equalTo Seq(1 -> OnNext("event"))
     }
 
   }
