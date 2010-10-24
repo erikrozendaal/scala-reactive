@@ -3,10 +3,16 @@ package org.deler.reactive
 import org.joda.time.Instant
 
 /**
- * Schedules actions to run on the current thread (the thread that owns this instance). Instances of this class must be thread-safe!
+ * Schedules actions to run as soon as possible on the calling thread. As soon as possible means:
+ *
+ * <ol>
+ * <li>Immediately if no action is currently execution,
+ * <li>or directly after the currently executing action (and any other scheduled actions) has completed.
+ * </ol>
+ *
+ * Actions scheduled for a later time will cause the current thread to sleep. 
  */
 class CurrentThreadScheduler extends Scheduler {
-
   import ThreadLocalOps._
 
   private val schedule = new ThreadLocal[Schedule]
@@ -18,9 +24,10 @@ class CurrentThreadScheduler extends Scheduler {
     if (currentSchedule != null) {
       currentSchedule.enqueue(at, () => action)
     } else {
-      schedule.withValue(new Schedule) { schedule =>
-        schedule.enqueue(at, () => action)
-        runQueued(schedule)
+      schedule.withValue(new Schedule) {
+        schedule =>
+          schedule.enqueue(at, () => action)
+          runQueued(schedule)
       }
       NullSubscription
     }
@@ -30,8 +37,8 @@ class CurrentThreadScheduler extends Scheduler {
     schedule.dequeue match {
       case None =>
       case Some(scheduled) => {
-    	val delay = scheduled.time.getMillis - now.getMillis
-    	if (delay > 0) {
+        val delay = scheduled.time.getMillis - now.getMillis
+        if (delay > 0) {
           Thread.sleep(delay)
         }
         scheduled.action()

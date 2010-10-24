@@ -3,15 +3,43 @@ package org.deler.reactive
 import org.joda.time._
 import scala.collection._
 
+/**
+ * A scheduler is used to schedule work. Various standard schedulers are provided.
+ */
 trait Scheduler {
+
+  /**
+   * The scheduler's concept of the current instant in time (now).
+   */
   def now: Instant
 
+  /**
+   * Schedule <code>action</code> to be executed by the scheduler (the scheduler can determine when).
+   *
+   * @return a subscription that can be used to cancel the scheduled action.
+   */
   def schedule(action: => Unit): Subscription = scheduleAt(now)(action)
 
+  /**
+   * Schedule <code>action</code> to be executed at or soon after <code>at</code>.
+   *
+   * @return a subscription that can be used to cancel the scheduled action.
+   */
   def scheduleAt(at: Instant)(action: => Unit): Subscription = scheduleAfter(new Duration(now, at))(action)
 
+  /**
+   * Schedule <code>action</code> to be run after the specified <code>delay</code>.
+   *
+   * @return a subscription that can be used to cancel the scheduled action.
+   */
   def scheduleAfter(delay: Duration)(action: => Unit): Subscription = scheduleAt(now plus delay)(action)
 
+  /**
+   * Schedule <code>action</code> to be executed by the scheduler (as with <code>schedule</code>). A callback
+   * is passed to <code>action</code> that will reschedule <code>action</code> when invoked. Any rescheduled
+   *
+   * @return a subscription that can be used to cancel the scheduled action and any rescheduled actions.
+   */
   def scheduleRecursive(action: (() => Unit) => Unit): Subscription = {
     val result = new CompositeSubscription
     def self() {
@@ -28,13 +56,13 @@ trait Scheduler {
 }
 
 object Scheduler {
-  implicit val immediate: Scheduler = new ImmediateScheduler
+  val immediate: Scheduler = new ImmediateScheduler
   val currentThread: Scheduler = new CurrentThreadScheduler
 }
 
 /**
- * Scheduler that invokes the specified action immediately. Actions scheduled for the future will be block
- * the caller until the scheduled action has run.
+ * Scheduler that invokes the specified action immediately. Actions scheduled for the future execution will block
+ * the caller until the specified moment has arrived and the scheduled action has completed.
  */
 class ImmediateScheduler extends Scheduler {
   def now = new Instant
@@ -49,53 +77,6 @@ class ImmediateScheduler extends Scheduler {
       Thread.sleep(delay.getMillis)
     }
     schedule(action)
-  }
-
-}
-
-private class ScheduledAction(val time: Instant, val sequence: Long, val action: () => Unit) extends Ordered[ScheduledAction] {
-  def compare(that: ScheduledAction) = {
-    var rc = this.time.compareTo(that.time)
-    if (rc == 0) {
-      if (this.sequence < that.sequence) {
-        rc = -1;
-      } else if (this.sequence > that.sequence) {
-        rc = 1;
-      }
-    }
-    rc
-  }
-}
-
-private[reactive] class Schedule {
-  self =>
-
-  private var sequence: Long = 0L
-  private var schedule = SortedSet[ScheduledAction]()
-
-  def enqueue(time: Instant, action: () => Unit): Subscription = {
-    val scheduled = new ScheduledAction(time, sequence, action)
-    schedule += scheduled
-    sequence += 1
-    new Subscription {def close() = {schedule -= scheduled}}
-  }
-
-  def dequeue: Option[ScheduledAction] = {
-    if (schedule.isEmpty) {
-      None
-    } else {
-      val result = schedule.head
-      schedule = schedule.tail
-      Some(result)
-    }
-  }
-
-  def dequeue(until: Instant): Option[ScheduledAction] = {
-    if (!schedule.isEmpty && (schedule.head.time isBefore until)) {
-      dequeue
-    } else {
-      None
-    }
   }
 }
 
@@ -170,4 +151,50 @@ class TestScheduler extends VirtualScheduler(new Instant(0)) {
     super.scheduleAt(t)(action)
   }
 
+}
+
+private class ScheduledAction(val time: Instant, val sequence: Long, val action: () => Unit) extends Ordered[ScheduledAction] {
+  def compare(that: ScheduledAction) = {
+    var rc = this.time.compareTo(that.time)
+    if (rc == 0) {
+      if (this.sequence < that.sequence) {
+        rc = -1;
+      } else if (this.sequence > that.sequence) {
+        rc = 1;
+      }
+    }
+    rc
+  }
+}
+
+private[reactive] class Schedule {
+  self =>
+
+  private var sequence: Long = 0L
+  private var schedule = SortedSet[ScheduledAction]()
+
+  def enqueue(time: Instant, action: () => Unit): Subscription = {
+    val scheduled = new ScheduledAction(time, sequence, action)
+    schedule += scheduled
+    sequence += 1
+    new Subscription {def close() = {schedule -= scheduled}}
+  }
+
+  def dequeue: Option[ScheduledAction] = {
+    if (schedule.isEmpty) {
+      None
+    } else {
+      val result = schedule.head
+      schedule = schedule.tail
+      Some(result)
+    }
+  }
+
+  def dequeue(until: Instant): Option[ScheduledAction] = {
+    if (!schedule.isEmpty && (schedule.head.time isBefore until)) {
+      dequeue
+    } else {
+      None
+    }
+  }
 }
