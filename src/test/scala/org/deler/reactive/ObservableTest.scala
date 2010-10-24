@@ -5,17 +5,20 @@ import org.specs._
 import org.specs.mock.Mockito
 import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import scala.collection._
+import org.joda.time.Instant
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableTest extends Specification with JUnit with Mockito {
-  import Observable.traversableToObservableWrapper
+  import Observable.iterableToObservableWrapper
+
 
   val ex = new Exception("fail")
 
   val emptyTraversable = Seq[String]()
   val multivaluedTraversable = Seq("first value", "second value")
 
-  val observer = mock[Observer[String]]
+  val scheduler = new TestScheduler
+  val observer = new TestObserver[String](scheduler)
 
   "Observable.create" should {
     "invoke delegate on subscription with the observer as argument" in {
@@ -30,7 +33,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
       observable.subscribe(observer)
 
       delegateCalled must be equalTo true
-      there was one(observer).onNext("delegate")
+      observer.notifications must be equalTo Seq(0 -> OnNext("delegate"))
     }
 
     "invoke delegate's result when subscription is closed" in {
@@ -45,33 +48,35 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
   }
 
-  "traversables as observable" should {
+  "iterables as observable" should {
 
     "invoke onComplete when empty" in {
-      emptyTraversable.toObservable.subscribe(observer)
+      Seq[String]().toObservable(scheduler).subscribe(observer)
 
-      there was one(observer).onCompleted()
-      there were noMoreCallsTo(observer)
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(100 -> OnCompleted)
     }
     "invoke onNext for each contained element followed by onComplete" in {
-      multivaluedTraversable.toObservable.subscribe(observer)
+      Seq("first", "second").toObservable(scheduler).subscribe(observer)
 
-      there was one(observer).onNext("first value") then one(observer).onNext("second value") then one(observer).onCompleted()
-      there were noMoreCallsTo(observer)
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(100 -> OnNext("first"), 200 -> OnNext("second"), 300 -> OnCompleted)
     }
     "stop producing values when the subscription is closed" in {
-      Scheduler.currentThread schedule {
-        var subscription: Subscription = null
+      val subscription = Seq("first", "second").toObservable(scheduler).subscribe(observer)
+      scheduler.scheduleAt(new Instant(150)) {subscription.close()}
 
-        subscription = multivaluedTraversable.toObservable(Scheduler.currentThread).perform(_ => subscription.close()).subscribe(observer)
-      }
-      there was one(observer).onNext("first value")
-      there were noMoreCallsTo(observer)
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(100 -> OnNext("first"))
     }
   }
 
   "observables" should {
-    val observable = Seq("event").toObservable
+    val observable = Observable.value("value", scheduler)
+
     val failingObservable: Observable[Nothing] = Observable.createWithSubscription {
       observer =>
         observer.onError(ex)
@@ -80,86 +85,159 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
     "allow easy subscription using single onNext method" in {
       observable subscribe (onNext = observer onNext _)
+      scheduler.run()
 
-      there was one(observer).onNext("event")
-      there were noMoreCallsTo(observer)
+      observer.notifications must be equalTo Seq(100 -> OnNext("value"))
     }
+
     "allow easy subscription using multiple methods" in {
       observable subscribe (onCompleted = () => observer.onCompleted(), onNext = observer.onNext(_))
+      scheduler.run()
 
-      there was one(observer).onNext("event") then one(observer).onCompleted()
-      there were noMoreCallsTo(observer)
+      observer.notifications must be equalTo Seq(100 -> OnNext("value"), 200 -> OnCompleted)
     }
+
     "collect events" in {
-      val observable = Seq(1, "event").toObservable
+      val observable = Seq(1, "string").toObservable
 
       val collected = observable collect {case x: String => x} toSeq
 
-      collected must be equalTo List("event")
+      collected must be equalTo Seq("string")
     }
 
     "allow filtering by type" in {
-      val observable = Seq(1, "event").toObservable
+      val observable = Seq(1, "string").toObservable
 
       val filtered: Observable[String] = observable.ofType(classOf[String])
 
-      filtered.toSeq must be equalTo Seq("event")
+      filtered.toSeq must be equalTo Seq("string")
     }
 
     "allow observing using for-comprehension" in {
-      val events = for (event <- observable) yield event
+      (for (event <- observable) yield event).subscribe(observer)
+      scheduler.run()
 
-      events.toSeq must be equalTo List("event")
+      observer.notifications must be equalTo Seq(100 -> OnNext("value"), 200 -> OnCompleted)
     }
-    "allow filtering using for-comprehension" in {
-      val events = for (event <- multivaluedTraversable.toObservable if event == "first value") yield event
 
-      events.toSeq must be equalTo List("first value")
+    "allow filtering using for-comprehension" in {
+      val observable = Seq("first", "second").toObservable(scheduler)
+
+      (for (event <- observable if event == "first") yield event).subscribe(observer)
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(100 -> OnNext("first"), 300 -> OnCompleted)
     }
 
     "allow for nested for-comprehension" in {
-      val observable = List("a", "b").toObservable
-      val events = for (e1 <- observable; e2 <- observable) yield (e1, e2)
+      val observable1 = Seq("a", "b").toObservable(scheduler)
+      val observable2 = Seq("c", "d").toObservable(scheduler)
 
-      events.toSeq must be equalTo List(("a", "a"), ("a", "b"), ("b", "a"), ("b", "b"))
+      (for (e1 <- observable1; e2 <- observable2) yield e1 + e2).subscribe(observer)
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(
+        // 0 -> observable1 schedules onNext("a")
+        // 100 -> observable1 produces onNext("a") and schedules onNext("b")
+        200 -> OnNext("ac"), // first observable2 produces OnNext("c") and schedules onNext("d")
+        // 300 -> observable1 produces onNext("b") and schedules onCompleted
+        400 -> OnNext("ad"), // first observable2 produces onNext("d") and schedules onCompleted
+        500 -> OnNext("bc"), // second observable2 procues onNext("c") and schedules onNext("d")
+        // 600 -> observable1 produces onCompleted
+        // 700 -> first observable2 produces onCompleted
+        800 -> OnNext("bd"), // second observable2 produces onNext("d") and schedules onCompleted
+        900 -> OnCompleted) // second observable2 produces onCompleted
     }
 
-    "flatten should invoke onCompleted after all observables have completed" in {
-      val generator = new Subject[Subject[String]]
-      val first = new Subject[String]
-      val second = new Subject[String]
-      generator.flatten.subscribe(observer)
+    "stop nested for-comprehension on unsubscribe" in {
+      val observable1 = Seq("a", "b").toObservable(scheduler)
+      val observable2 = Seq("c", "d").toObservable(scheduler)
 
-      generator.onNext(first)
-      first.onNext("first value")
-      first.onNext("second value")
-      generator.onNext(second)
-      second.onNext("third value")
-      second.onCompleted()
-      generator.onCompleted()
-      first.onNext("fourth value")
-      first.onCompleted()
+      val subscription = (for (e1 <- observable1; e2 <- observable2) yield e1 + e2).subscribe(observer)
+      scheduler.scheduleAt(new Instant(450)) {subscription.close()}
+      scheduler.run()
 
-      there was one(observer).onNext("first value") then one(observer).onNext("second value") then one(observer).onNext("third value") then one(observer).onNext("fourth value") then one(observer).onCompleted()
+      observer.notifications must be equalTo Seq(
+        200 -> OnNext("ac"),
+        400 -> OnNext("ad"),
+        500 -> OnNext("bc")) // why???
     }
+
+    "stop flatten on unsubscribe" in {
+      val observable = Seq(Seq("a", "b").toObservable(scheduler), Seq("c", "d").toObservable(scheduler)).toObservable(scheduler)
+
+      val subscription = observable.flatten.subscribe(observer)
+      scheduler.scheduleAt(new Instant(450)) {subscription.close()}
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(
+        200 -> OnNext("a"),
+        400 -> OnNext("b"),
+        500 -> OnNext("c")) // why???
+    }
+
+  }
+
+
+  class TestObserver[T](scheduler: Scheduler) extends Observer[T] {
+    private var _notifications = immutable.Queue[(Int, Notification[T])]()
+
+    def notifications = _notifications.toSeq
+
+    override def onCompleted() {
+      _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnCompleted)
+    }
+
+    override def onError(error: Exception) {
+      _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnError(error))
+    }
+
+    override def onNext(value: T) {
+      _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnNext(value))
+    }
+
   }
 
   "empty observables" should {
-    "only publish onCompleted" in {
-      Observable.empty().subscribe(observer)
+    val subscription = Observable.empty(scheduler).subscribe(observer)
 
-      there was one(observer).onCompleted()
-      there were noMoreCallsTo(observer)
+    "only publish onCompleted" in {
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq((100 -> OnCompleted))
     }
+
+    "not publish anything when subscription is closed" in {
+      subscription.close()
+
+      scheduler.run()
+
+      observer.notifications must beEmpty
+    }
+
   }
 
   "singleton observables" should {
-    "only publish single event followed by onCompleted" in {
-      Observable.value("event").subscribe(observer)
+    val scheduler = new TestScheduler
+    val observer = new TestObserver[String](scheduler)
+    val subscription = Observable.value("event", scheduler).subscribe(observer)
 
-      there was one(observer).onNext("event") then one(observer).onCompleted()
-      there were noMoreCallsTo(observer)
+    "only publish single event followed by onCompleted" in {
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq((100 -> OnNext("event")), (200 -> OnCompleted))
     }
+
+    "stop publishing when subscription is closed" in {
+      scheduler.scheduleAt(new Instant(150)) {
+        subscription.close()
+      }
+
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq((100 -> OnNext("event")))
+    }
+
   }
 
   "take n" should {
@@ -270,7 +348,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
       subscription.close()
       second.onNext("second")
 
-      result.toSeq must be  equalTo Seq(OnNext("first"))
+      result.toSeq must be equalTo Seq(OnNext("first"))
     }
   }
 
@@ -296,6 +374,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
   "dematerialized observables" should {
     val observable = new Subject[Notification[String]]
+    val observer = mock[Observer[String]]
 
     "map each OnNext value to Observer.onNext" in {
       observable.dematerialize.subscribe(observer)

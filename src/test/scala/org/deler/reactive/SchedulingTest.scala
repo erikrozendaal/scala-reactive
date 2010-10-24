@@ -13,7 +13,7 @@ class SchedulingTest extends Specification with JUnit with Mockito {
 
   val INITIAL = new Instant
 
-  var subject = new VirtualScheduler(INITIAL)
+  val subject = new VirtualScheduler(INITIAL)
 
   var count = 0
   def action(expectedTime: Instant = INITIAL) {
@@ -115,6 +115,37 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject.run()
 
       count must be equalTo 2
+    }
+  }
+
+  "schedule recursive" should {
+    val scheduler = new TestScheduler
+
+    var count = 0
+    def recursiveAction(self: () => Unit) {
+      count += 1
+      if (count < 5) {
+        self()
+      }
+    }
+
+    "recursively schedule same action" in {
+      scheduler scheduleRecursive recursiveAction
+
+      scheduler.run()
+
+      count must be equalTo 5
+      scheduler.now.getMillis must be equalTo 600
+    }
+
+    "cancel recursively scheduled action when subscription is closed" in {
+      val subscription = scheduler scheduleRecursive recursiveAction
+      scheduler.scheduleAt(new Instant(150)) { subscription.close() }
+
+      scheduler.run()
+
+      count must be equalTo 1
+      scheduler.now.getMillis must be equalTo 300
     }
   }
 

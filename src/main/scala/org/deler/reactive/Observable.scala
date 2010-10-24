@@ -207,39 +207,33 @@ object Observable {
     override def subscribe(observer: Observer[T]) = delegate(observer)
   }
 
-  def empty[T](scheduler: Scheduler = Scheduler.immediate): Observable[T] = create {
+  def empty[T](scheduler: Scheduler = Scheduler.immediate): Observable[T] = createWithSubscription {
     observer =>
       scheduler schedule {observer.onCompleted()}
-      Observable.noop
   }
 
   def value[E](event: E, scheduler: Scheduler = Scheduler.immediate): Observable[E] = {
     Seq(event).toObservable(scheduler)
   }
 
-  class TraversableToObservableWrapper[E](val traversable: Traversable[E]) {
+  class IterableToObservableWrapper[E](val traversable: Iterable[E]) {
     def toObservable: Observable[E] = toObservable(Scheduler.currentThread)
 
     def toObservable(scheduler: Scheduler): Observable[E] = createWithSubscription {
       observer =>
-        val subscription = new BooleanSubscription
-        def loop() {
-          for (event <- traversable) {
-            if (subscription.closed) {
-              return
-            }
-            observer.onNext(event)
-          }
-          if (!subscription.closed)
+        val it = traversable.iterator
+        scheduler scheduleRecursive { self =>
+          if (it.hasNext) {
+            observer.onNext(it.next())
+            self()
+          } else {
             observer.onCompleted()
+          }
         }
-
-        scheduler.schedule(loop)
-        subscription
     }
   }
 
-  implicit def traversableToObservableWrapper[E](traversable: Traversable[E]): TraversableToObservableWrapper[E] = new TraversableToObservableWrapper(traversable)
+  implicit def iterableToObservableWrapper[E](traversable: Iterable[E]): IterableToObservableWrapper[E] = new IterableToObservableWrapper(traversable)
 
   class NestedObservableWrapper[T](source: Observable[Observable[T]]) {
     def flatten: Observable[T] = createWithSubscription {
