@@ -10,7 +10,7 @@ import scala.collection._
 
 @RunWith(classOf[JUnitSuiteRunner])
 class SchedulingTest extends Specification with JUnit with Mockito {
-  val INITIAL = new Instant
+  val INITIAL = new Instant(100)
 
   val subject = new VirtualScheduler(INITIAL)
 
@@ -116,6 +116,26 @@ class SchedulingTest extends Specification with JUnit with Mockito {
       subject.run()
 
       count must be equalTo 2
+    }
+
+    "schedule recursive action with delay" in {
+      var count = 0
+      var timestamps = immutable.Queue[(Long, Int)]()
+      subject.scheduleRecursiveAfter(new Duration(100)) { self =>
+        count += 1
+        timestamps = timestamps enqueue Tuple2(subject.now.getMillis, count)
+        if (count < 3) {
+          self(new Duration(count * 100))
+        }
+      }
+
+      subject.run()
+
+      count must be equalTo 3
+      timestamps must be equalTo immutable.Queue(
+        200L -> 1,
+        300L -> 2,
+        500L -> 3)
     }
   }
 

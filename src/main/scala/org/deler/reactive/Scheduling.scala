@@ -36,7 +36,7 @@ trait Scheduler {
 
   /**
    * Schedule <code>action</code> to be executed by the scheduler (as with <code>schedule</code>). A callback
-   * is passed to <code>action</code> that will reschedule <code>action</code> when invoked. Any rescheduled
+   * is passed to <code>action</code> that will reschedule <code>action</code> when invoked.
    *
    * @return a subscription that can be used to cancel the scheduled action and any rescheduled actions.
    */
@@ -51,6 +51,26 @@ trait Scheduler {
       })
     }
     self()
+    result
+  }
+
+  /**
+   * Schedule <code>action</code> to be executed by the scheduler (as with <code>scheduleAfter</code>). A callback
+   * is passed to <code>action</code> that will reschedule <code>action</code> with the specified delay when invoked.
+   *
+   * @return a subscription that can be used to cancel the scheduled action and any rescheduled actions.
+   */
+  def scheduleRecursiveAfter(delay: Duration)(action: (Duration => Unit) => Unit): Subscription = {
+    val result = new CompositeSubscription
+    def self(delay: Duration) {
+      val subscription = new FutureSubscription
+      result.add(subscription)
+      subscription.set(scheduleAfter(delay) {
+        result.remove(subscription)
+        action(self)
+      })
+    }
+    self(delay)
     result
   }
 }
