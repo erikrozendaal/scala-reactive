@@ -14,9 +14,6 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
   val ex = new Exception("fail")
 
-  val emptyTraversable = Seq[String]()
-  val multivaluedTraversable = Seq("first value", "second value")
-
   val scheduler = new TestScheduler
   val observer = new TestObserver[String](scheduler)
 
@@ -61,21 +58,21 @@ class ObservableTest extends Specification with JUnit with Mockito {
   "iterables as observable" should {
 
     "invoke onComplete when empty" in {
-      Seq[String]().toObservable(scheduler).subscribe(observer)
+      Seq[String]().subscribe(observer, scheduler)
 
       scheduler.run()
 
       observer.notifications must be equalTo Seq(1 -> OnCompleted)
     }
     "invoke onNext for each contained element followed by onComplete" in {
-      Seq("first", "second").toObservable(scheduler).subscribe(observer)
+      Seq("first", "second").subscribe(observer, scheduler)
 
       scheduler.run()
 
       observer.notifications must be equalTo Seq(1 -> OnNext("first"), 2 -> OnNext("second"), 3 -> OnCompleted)
     }
     "stop producing values when the subscription is closed" in {
-      val subscription = Seq("first", "second").toObservable(scheduler).subscribe(observer)
+      val subscription = Seq("first", "second").subscribe(observer, scheduler)
       scheduler.scheduleAt(new Instant(2)) {subscription.close()}
 
       scheduler.run()
@@ -85,7 +82,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
   }
 
   "observables" should {
-    val observable = Observable.value("value", scheduler)
+    val observable = Observable.value("value")(scheduler)
 
     val failingObservable: Observable[Nothing] = Observable.createWithSubscription {
       observer =>
@@ -253,7 +250,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
   "singleton observables" should {
     val scheduler = new TestScheduler
     val observer = new TestObserver[String](scheduler)
-    val subscription = Observable.value("event", scheduler).subscribe(observer)
+    val subscription = Observable.value("event")(scheduler).subscribe(observer)
 
     "only publish single event followed by onCompleted" in {
       scheduler.run()

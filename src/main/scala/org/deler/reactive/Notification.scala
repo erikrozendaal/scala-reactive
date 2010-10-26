@@ -3,8 +3,8 @@ package org.deler.reactive
 /**
  * Represents a notification from an [[org.deler.reactive.Observable]] to an [[org.deler.reactive.Observer]].
  */
-sealed abstract class Notification[+T] {
-  def accept(observer: Observer[T])
+sealed abstract class Notification[+A] {
+  def accept(observer: Observer[A])
 }
 
 /**
@@ -28,8 +28,8 @@ case class OnError(error: Exception) extends Notification[Nothing] {
 /**
  * Notification indicating the next value of an [[org.deler.reactive.Observable]].
  */
-case class OnNext[T](value: T) extends Notification[T] {
-  def accept(observer: Observer[T]) {
+case class OnNext[A](value: A) extends Notification[A] {
+  def accept(observer: Observer[A]) {
     observer.onNext(value)
   }
 }

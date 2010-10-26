@@ -53,7 +53,7 @@ trait Observable[+A] {
    * function is defined.
    */
   def collect[B](pf: PartialFunction[A, B]): Observable[B] = {
-    for (event <- this if pf.isDefinedAt(event)) yield pf(event)
+    for (value <- this if pf.isDefinedAt(value)) yield pf(value)
   }
 
   /**
@@ -64,7 +64,7 @@ trait Observable[+A] {
       val result = new MutableSubscription
       result.set(self.subscribe(
         onNext = {value => observer.onNext(value)},
-        onError = {error => observer.onError(error); result.close},
+        onError = {error => observer.onError(error); result.close()},
         onCompleted = {() => result.set(that.subscribe(observer))}))
       result
   }
@@ -77,21 +77,21 @@ trait Observable[+A] {
   /**
    * A new observable only containing the values from this observable for which the predicate is satisfied.
    */
-  def filter(p: A => Boolean): Observable[A] = createWithSubscription {
+  def filter(predicate: A => Boolean): Observable[A] = createWithSubscription {
     observer =>
       self.subscribe(new Observer[A] {
         override def onCompleted() = observer.onCompleted()
 
         override def onError(error: Exception) = observer.onError(error)
 
-        override def onNext(event: A) = if (p(event)) observer.onNext(event)
+        override def onNext(value: A) = if (predicate(value)) observer.onNext(value)
       })
   }
 
   /**
    * Alias for <code>filter</code> that is used by the Scala for-loop construct.
    */
-  def withFilter(p: A => Boolean) = filter(p)
+  def withFilter(predicate: A => Boolean) = filter(predicate)
 
   /**
    * A new observable defined by applying a function to all values produced by this observable.
@@ -103,7 +103,7 @@ trait Observable[+A] {
 
         override def onError(error: Exception) = observer.onError(error)
 
-        override def onNext(event: A) = observer.onNext(f(event))
+        override def onNext(value: A) = observer.onNext(f(value))
       })
   }
 
@@ -140,9 +140,9 @@ trait Observable[+A] {
           observer.onError(error)
         }
 
-        override def onNext(event: A) = {
-          action(event);
-          observer.onNext(event)
+        override def onNext(value: A) = {
+          action(value);
+          observer.onNext(value)
         }
       })
   }
@@ -156,9 +156,9 @@ trait Observable[+A] {
       result.set(self.subscribe(new RelayObserver(observer) {
         var count: Int = 0
 
-        override def onNext(event: A) = {
+        override def onNext(value: A) = {
           if (count < n) {
-            super.onNext(event)
+            super.onNext(value)
             count += 1
           }
           if (count >= n) {
@@ -183,17 +183,18 @@ trait Observable[+A] {
 }
 
 object Observable {
+  def apply[A](values: A*)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] =
+    new IterableToObservableWrapper(values).toObservable(scheduler)
+
   /**
    * The default <code>onNext</code> handler does nothing.
    */
-  def defaultOnNext[T](value: T) {}
+  def defaultOnNext[A](value: A) {}
 
   /**
    * The default <code>onError</code> handler throws the <code>error</code>.
    */
-  def defaultOnError(error: Exception) {
-    throw error
-  }
+  def defaultOnError(error: Exception) {throw error}
 
   /**
    * The default <code>onCompleted</code> handler does nothing.
@@ -202,26 +203,26 @@ object Observable {
 
   def noop() {}
 
-  def create[T](delegate: Observer[T] => () => Unit): Observable[T] = createWithSubscription {
+  def create[A](delegate: Observer[A] => () => Unit): Observable[A] = createWithSubscription {
     observer =>
       val unsubscribe = delegate(observer)
       new Subscription {def close() = unsubscribe()}
   }
 
-  def createWithSubscription[T](delegate: Observer[T] => Subscription): Observable[T] = new Observable[T] {
-    override def subscribe(observer: Observer[T]) = ThreadLocalSchedule runImmediate delegate(observer)
+  def createWithSubscription[A](delegate: Observer[A] => Subscription): Observable[A] = new Observable[A] {
+    override def subscribe(observer: Observer[A]) = ThreadLocalSchedule runImmediate delegate(observer)
   }
 
-  def empty[T](scheduler: Scheduler = Scheduler.immediate): Observable[T] = createWithSubscription {
+  def empty[A](implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = createWithSubscription {
     observer =>
       scheduler schedule {observer.onCompleted()}
   }
 
-  def value[E](event: E, scheduler: Scheduler = Scheduler.immediate): Observable[E] = {
-    Seq(event).toObservable(scheduler)
+  def value[A](value: A)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = {
+    Seq(value).toObservable(scheduler)
   }
 
-  def interval(interval: Duration, scheduler: Scheduler = Scheduler.currentThread): Observable[Int] = createWithSubscription {
+  def interval(interval: Duration)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[Int] = createWithSubscription {
     observer =>
       var counter = 0
       val result = new MutableSubscription
@@ -234,10 +235,10 @@ object Observable {
       result
   }
 
-  class IterableToObservableWrapper[E](val iterable: Iterable[E]) {
-    def toObservable: Observable[E] = toObservable(Scheduler.currentThread)
+  class IterableToObservableWrapper[+A](val iterable: Iterable[A]) {
+    def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Subscription = this.toObservable(scheduler).subscribe(observer)
 
-    def toObservable(scheduler: Scheduler): Observable[E] = createWithSubscription {
+    def toObservable(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
       observer =>
         val it = iterable.iterator
         scheduler scheduleRecursive {
@@ -252,10 +253,10 @@ object Observable {
     }
   }
 
-  implicit def iterableToObservableWrapper[E](iterable: Iterable[E]): IterableToObservableWrapper[E] = new IterableToObservableWrapper(iterable)
+  implicit def iterableToObservableWrapper[A](iterable: Iterable[A]): IterableToObservableWrapper[A] = new IterableToObservableWrapper(iterable)
 
-  class NestedObservableWrapper[T](source: Observable[Observable[T]]) {
-    def flatten: Observable[T] = createWithSubscription {
+  class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
+    def flatten: Observable[A] = createWithSubscription {
       observer =>
         val result = new CompositeSubscription
         val generatorSubscription = new MutableSubscription
@@ -265,7 +266,7 @@ object Observable {
             value =>
               val holder = new MutableSubscription
               result.add(holder)
-              holder.set(value.subscribe(new Observer[T] {
+              holder.set(value.subscribe(new Observer[A] {
                 override def onCompleted() {
                   result.remove(holder)
                   if (result.isEmpty) {
@@ -278,7 +279,7 @@ object Observable {
                   result.close()
                 }
 
-                override def onNext(value: T) {
+                override def onNext(value: A) {
                   observer.onNext(value)
                 }
               }))
@@ -295,24 +296,24 @@ object Observable {
     }
   }
 
-  implicit def nestedObservableWrapper[T](source: Observable[Observable[T]]) = new NestedObservableWrapper(source)
+  implicit def nestedObservableWrapper[A](source: Observable[Observable[A]]) = new NestedObservableWrapper(source)
 
-  class DematerializeObservableWrapper[T](source: Observable[Notification[T]]) {
-    def dematerialize: Observable[T] = createWithSubscription {
+  class DematerializeObservableWrapper[A](source: Observable[Notification[A]]) {
+    def dematerialize: Observable[A] = createWithSubscription {
       observer =>
         val relay = new RelayObserver(observer)
-        source.subscribe(new Observer[Notification[T]] {
+        source.subscribe(new Observer[Notification[A]] {
           override def onCompleted() = relay.onCompleted()
 
           override def onError(error: Exception) = relay.onError(error)
 
-          override def onNext(notification: Notification[T]) = notification.accept(relay)
+          override def onNext(notification: Notification[A]) = notification.accept(relay)
         })
 
     }
   }
 
-  implicit def dematerializeObservableWrapper[T](source: Observable[Notification[T]]) = new DematerializeObservableWrapper(source)
+  implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
 
 }
 
@@ -320,7 +321,7 @@ object Observable {
  * Observer that passes on all notifications to a <code>target</code> observer, taking care that no more notifications
  * are send after either <code>onError</code> or <code>onCompleted</code> occurred.
  */
-private class RelayObserver[-T](target: Observer[T]) extends Observer[T] {
+private class RelayObserver[-A](target: Observer[A]) extends Observer[A] {
   private var completed = false
 
   override def onCompleted() {
@@ -335,7 +336,7 @@ private class RelayObserver[-T](target: Observer[T]) extends Observer[T] {
     target.onError(error);
   }
 
-  override def onNext(value: T) {
+  override def onNext(value: A) {
     if (completed) return
     target.onNext(value)
   }
