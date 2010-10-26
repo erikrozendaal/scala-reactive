@@ -55,7 +55,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "iterables as observable" should {
+  "Iterable.toObservable" should {
 
     "invoke onComplete when empty" in {
       Seq[String]().subscribe(observer, scheduler)
@@ -81,7 +81,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "observables" should {
+  "Observable" should {
     val observable = Observable.value("value")(scheduler)
 
     val failingObservable: Observable[Nothing] = Observable.createWithSubscription {
@@ -104,7 +104,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
       observer.notifications must be equalTo Seq(1 -> OnNext("value"), 2 -> OnCompleted)
     }
 
-    "collect events" in {
+    "collect values" in {
       val observable = Seq(1, "string").toObservable
 
       val collected = observable collect {case x: String => x} toSeq
