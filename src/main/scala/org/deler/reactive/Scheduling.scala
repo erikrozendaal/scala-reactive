@@ -2,6 +2,7 @@ package org.deler.reactive
 
 import org.joda.time._
 import scala.collection._
+import org.slf4j.LoggerFactory
 
 /**
  * A scheduler is used to schedule work. Various standard schedulers are provided.
@@ -80,6 +81,42 @@ object Scheduler {
   val currentThread: Scheduler = new CurrentThreadScheduler
 }
 
+object ThreadLocalSchedule extends ThreadLocal[Schedule] {
+  def runImmediate(action: => Subscription): Subscription = runWithSchedule(_ => action)
+
+  def runWithSchedule(action: Schedule => Subscription): Subscription = {
+    var schedule = get
+    if (schedule != null) {
+      action(schedule)
+    } else {
+      try {
+        schedule = new Schedule
+        set(schedule)
+        val result = action(schedule)
+        runQueued(schedule)
+        result
+      } finally {
+        remove
+      }
+    }
+
+  }
+
+  private def runQueued(schedule: Schedule) {
+    schedule.dequeue match {
+      case None =>
+      case Some(scheduled) => {
+        val delay = scheduled.time.getMillis - Scheduler.currentThread.now.getMillis
+        if (delay > 0) {
+          Thread.sleep(delay)
+        }
+        scheduled.action()
+        runQueued(schedule)
+      }
+    }
+  }
+}
+
 /**
  * Scheduler that invokes the specified action immediately. Actions scheduled for the future execution will block
  * the caller until the specified moment has arrived and the scheduled action has completed.
@@ -88,8 +125,10 @@ class ImmediateScheduler extends Scheduler {
   def now = new Instant
 
   override def schedule(action: => Unit): Subscription = {
-    action
-    NullSubscription
+    ThreadLocalSchedule runImmediate {
+      action
+      NullSubscription
+    }
   }
 
   override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
@@ -97,6 +136,29 @@ class ImmediateScheduler extends Scheduler {
       Thread.sleep(delay.getMillis)
     }
     schedule(action)
+  }
+}
+
+/**
+ * Schedules actions to run as soon as possible on the calling thread. As soon as possible means:
+ *
+ * <ol>
+ * <li>Immediately if no action is currently execution,
+ * <li>or directly after the currently executing action (and any other scheduled actions) has completed.
+ * </ol>
+ *
+ * Actions scheduled for a later time will cause the current thread to sleep.
+ */
+class CurrentThreadScheduler extends Scheduler {
+  private val schedule = new ThreadLocal[Schedule]
+
+  def now = new Instant
+
+  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
+    ThreadLocalSchedule.runWithSchedule {
+      schedule =>
+        schedule.enqueue(at, () => action)
+    }
   }
 }
 
@@ -173,6 +235,38 @@ class TestScheduler extends VirtualScheduler(new Instant(0)) {
 
 }
 
+trait LoggingScheduler extends Scheduler {
+  private val log = LoggerFactory.getLogger(getClass);
+
+  private def trace(message: => String, s: => Subscription): Subscription = {
+    if (log.isTraceEnabled()) {
+      val m = message
+      log.trace("schedule '{}'", m);
+      val subscription = s
+      new Subscription {
+        def close() {
+          log.trace("cancel '{}'", m);
+          subscription.close
+        }
+      }
+    } else {
+      s
+    }
+  }
+
+  override def schedule(action: => Unit): Subscription = {
+    trace("schedule", super.schedule(action))
+  }
+
+  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
+    trace("scheduleAt: " + at, super.scheduleAt(at)(action))
+  }
+
+  override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
+    trace("scheduleAfter: " + delay, super.scheduleAfter(delay)(action))
+  }
+}
+
 private class ScheduledAction(val time: Instant, val sequence: Long, val action: () => Unit) extends Ordered[ScheduledAction] {
   def compare(that: ScheduledAction) = {
     var rc = this.time.compareTo(that.time)
@@ -197,7 +291,7 @@ private[reactive] class Schedule {
     val scheduled = new ScheduledAction(time, sequence, action)
     schedule += scheduled
     sequence += 1
-    new Subscription {def close() = {schedule -= scheduled}}
+    new Subscription {def close() = schedule -= scheduled}
   }
 
   def dequeue: Option[ScheduledAction] = {

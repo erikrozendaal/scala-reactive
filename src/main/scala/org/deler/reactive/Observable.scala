@@ -1,6 +1,8 @@
 package org.deler.reactive
 
 import scala.collection._
+import org.joda.time.Duration
+import org.slf4j.LoggerFactory
 
 /**
  * An observable can be subscribed to by an [[org.deler.reactive.Observer]]. Observables produce zero or more values
@@ -150,7 +152,8 @@ trait Observable[+A] {
    */
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>
-      self.subscribe(new RelayObserver(observer) {
+      val result = new MutableSubscription
+      result.set(self.subscribe(new RelayObserver(observer) {
         var count: Int = 0
 
         override def onNext(event: A) = {
@@ -159,10 +162,13 @@ trait Observable[+A] {
             count += 1
           }
           if (count >= n) {
-            super.onCompleted()
+            result.close()
+            onCompleted()
           }
         }
-      })
+
+      }))
+      result
   }
 
   // only works for immediate observables!
@@ -196,15 +202,14 @@ object Observable {
 
   def noop() {}
 
-  def create[T](delegate: Observer[T] => () => Unit): Observable[T] = new Observable[T] {
-    override def subscribe(observer: Observer[T]) = {
+  def create[T](delegate: Observer[T] => () => Unit): Observable[T] = createWithSubscription {
+    observer =>
       val unsubscribe = delegate(observer)
       new Subscription {def close() = unsubscribe()}
-    }
   }
 
   def createWithSubscription[T](delegate: Observer[T] => Subscription): Observable[T] = new Observable[T] {
-    override def subscribe(observer: Observer[T]) = delegate(observer)
+    override def subscribe(observer: Observer[T]) = ThreadLocalSchedule runImmediate delegate(observer)
   }
 
   def empty[T](scheduler: Scheduler = Scheduler.immediate): Observable[T] = createWithSubscription {
@@ -216,19 +221,33 @@ object Observable {
     Seq(event).toObservable(scheduler)
   }
 
+  def interval(interval: Duration, scheduler: Scheduler = Scheduler.currentThread): Observable[Int] = createWithSubscription {
+    observer =>
+      var counter = 0
+      val result = new MutableSubscription
+      result.set(scheduler.scheduleRecursiveAfter(interval) {
+        reschedule =>
+          observer.onNext(counter)
+          counter += 1
+          reschedule(interval)
+      })
+      result
+  }
+
   class IterableToObservableWrapper[E](val traversable: Iterable[E]) {
     def toObservable: Observable[E] = toObservable(Scheduler.currentThread)
 
     def toObservable(scheduler: Scheduler): Observable[E] = createWithSubscription {
       observer =>
         val it = traversable.iterator
-        scheduler scheduleRecursive { self =>
-          if (it.hasNext) {
-            observer.onNext(it.next())
-            self()
-          } else {
-            observer.onCompleted()
-          }
+        scheduler scheduleRecursive {
+          self =>
+            if (it.hasNext) {
+              observer.onNext(it.next())
+              self()
+            } else {
+              observer.onCompleted()
+            }
         }
     }
   }

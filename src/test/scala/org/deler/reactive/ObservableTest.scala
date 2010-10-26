@@ -5,7 +5,7 @@ import org.specs._
 import org.specs.mock.Mockito
 import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import scala.collection._
-import org.joda.time.Instant
+import org.joda.time.{Duration, Instant}
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableTest extends Specification with JUnit with Mockito {
@@ -46,6 +46,16 @@ class ObservableTest extends Specification with JUnit with Mockito {
       actionCalled must be equalTo true
     }
 
+  }
+
+  "Observable.iterate" should {
+    "generate a sequence value seperated by duration" in {
+      val observer = new TestObserver[Int](Scheduler.currentThread)
+
+      Observable.interval(new Duration(100)).take(3).subscribe(observer)
+
+      observer.notifications.map(_._2) must be equalTo Seq(OnNext(0), OnNext(1), OnNext(2), OnCompleted)
+    }
   }
 
   "iterables as observable" should {
