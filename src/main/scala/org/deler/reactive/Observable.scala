@@ -234,12 +234,12 @@ object Observable {
       result
   }
 
-  class IterableToObservableWrapper[E](val traversable: Iterable[E]) {
+  class IterableToObservableWrapper[E](val iterable: Iterable[E]) {
     def toObservable: Observable[E] = toObservable(Scheduler.currentThread)
 
     def toObservable(scheduler: Scheduler): Observable[E] = createWithSubscription {
       observer =>
-        val it = traversable.iterator
+        val it = iterable.iterator
         scheduler scheduleRecursive {
           self =>
             if (it.hasNext) {
@@ -252,7 +252,7 @@ object Observable {
     }
   }
 
-  implicit def iterableToObservableWrapper[E](traversable: Iterable[E]): IterableToObservableWrapper[E] = new IterableToObservableWrapper(traversable)
+  implicit def iterableToObservableWrapper[E](iterable: Iterable[E]): IterableToObservableWrapper[E] = new IterableToObservableWrapper(iterable)
 
   class NestedObservableWrapper[T](source: Observable[Observable[T]]) {
     def flatten: Observable[T] = createWithSubscription {
