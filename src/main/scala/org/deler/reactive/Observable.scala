@@ -2,7 +2,7 @@ package org.deler.reactive
 
 import scala.collection._
 import org.joda.time.Duration
-import org.slf4j.LoggerFactory
+import java.util.concurrent.LinkedBlockingQueue
 
 /**
  * An observable can be subscribed to by an [[org.deler.reactive.Observer]]. Observables produce zero or more values
@@ -61,7 +61,7 @@ trait Observable[+A] {
    */
   def ++[B >: A](that: Observable[B]): Observable[B] = createWithSubscription {
     observer =>
-      val result = new MutableSubscription
+      val result = new FutureSubscription
       result.set(self.subscribe(
         onNext = {value => observer.onNext(value)},
         onError = {error => observer.onError(error); result.close()},
@@ -171,13 +171,22 @@ trait Observable[+A] {
       result
   }
 
-  // only works for immediate observables!
+  /**
+   * Converts an Observable into a (lazy) Stream of values.
+   */
   def toSeq: Seq[A] = {
-    val result = new mutable.ArrayBuffer[A]
-    self.subscribe(new Observer[A] {
-      override def onNext(event: A) {result append event}
-    }).close()
-    result
+    val result = new LinkedBlockingQueue[Notification[A]]
+    val subscription = self.materialize.subscribe(value => result.put(value))
+
+    def resultToStream: Stream[A] = {
+      result.take match {
+        case OnCompleted => subscription.close(); Stream.Empty
+        case OnNext(value) => value #:: resultToStream
+        case OnError(error) => subscription.close(); throw error
+      }
+    }
+
+    resultToStream
   }
 
 }

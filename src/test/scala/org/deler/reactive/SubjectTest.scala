@@ -3,24 +3,22 @@ package org.deler.reactive
 import org.junit.runner.RunWith
 import org.specs._
 import org.specs.mock.Mockito
-import org.specs.runner.{ JUnitSuiteRunner, JUnit }
+import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import org.mockito.Matchers._
 import scala.collection._
 
 @RunWith(classOf[JUnitSuiteRunner])
 class SubjectTest extends Specification with JUnit with Mockito {
-
-  import Observable._
-
   val observer = mock[Observer[String]]
   val observer2 = mock[Observer[String]]
   var subscription: Subscription = _
 
   var subject = new Subject[String]
 
-  val singleObserver = beforeContext(subscription = subject.subscribe(observer))
-  val multipleObservers = beforeContext { subscription = subject.subscribe(observer); subject.subscribe(observer2) }
   val replaySubject = beforeContext(subject = new ReplaySubject[String])
+
+  val singleObserver = beforeContext(subscription = subject.subscribe(observer))
+  val multipleObservers = beforeContext {subscription = subject.subscribe(observer); subject.subscribe(observer2)}
 
   val event = "event"
   val error = new Exception("error")
@@ -91,24 +89,6 @@ class SubjectTest extends Specification with JUnit with Mockito {
       there was one(observer2).onNext(event)
     }
 
-  }
-
-  "extended subject" should {
-    "invoke onSubscribe when new observer subscribes and invoke result when subscription is disposed" in {
-      var onSubscribeInvoked = false
-      var onUnsubscribeInvoked = false
-      val subject = new Subject[String] {
-        override def onSubscribe(observer: Observer[String]) = {
-          onSubscribeInvoked = true
-          () => onUnsubscribeInvoked = true
-        }
-      }
-
-      subject.subscribe(observer).close()
-
-      onSubscribeInvoked must be equalTo true
-      onUnsubscribeInvoked must be equalTo true
-    }
   }
 
   "replay subjects" definedAs replaySubject should {

@@ -2,19 +2,13 @@ package org.deler.reactive
 
 import scala.collection._
 
-class Subject[E] extends Observable[E] with Observer[E] {
-
+class Subject[A](scheduler: Scheduler = Scheduler.immediate) extends Observable[A] with Observer[A] {
   private var subscriptions = Set[SubjectSubscription]()
   protected var completed = false
-  protected var error: Option[Exception] = None;
 
-  def subscribe(observer: Observer[E]): Subscription = {
-    val result = new SubjectSubscription(observer)
-    val onUnsubscribe = onSubscribe(observer)
-    new Subscription { def close = { result.close(); onUnsubscribe(); } }
+  def subscribe(observer: Observer[A]): Subscription = {
+    new SubjectSubscription(observer)
   }
-
-  def onSubscribe(observer: Observer[E]): () => Unit = () => {}
 
   override def onCompleted() {
     if (completed) return
@@ -22,23 +16,22 @@ class Subject[E] extends Observable[E] with Observer[E] {
     dispatch(_.onCompleted())
   }
 
-  override def onNext(event: E) {
+  override def onNext(value: A) {
     if (completed) return
-    dispatch(_.onNext(event))
+    dispatch(_.onNext(value))
   }
 
   override def onError(error: Exception) {
     if (completed) return
     completed = true
-    this.error = Some(error)
     dispatch(_.onError(error))
   }
 
-  private def dispatch(f: Observer[E] => Unit) {
-    subscriptions foreach { subscription => f(subscription.observer) }
+  private def dispatch(f: Observer[A] => Unit) {
+    subscriptions foreach {subscription => scheduler schedule f(subscription.observer)}
   }
 
-  private class SubjectSubscription(val observer: Observer[E]) extends Subscription {
+  private class SubjectSubscription(val observer: Observer[A]) extends Subscription {
     subscriptions += this
 
     def close {
@@ -48,22 +41,42 @@ class Subject[E] extends Observable[E] with Observer[E] {
 
 }
 
-class ReplaySubject[E] extends Subject[E] {
+class ReplaySubject[A](scheduler: Scheduler = Scheduler.currentThread) extends Subject[A](scheduler) {
+  private var values = immutable.Queue[Notification[A]]()
 
-  private var events = immutable.Queue[E]()
-
-  override def subscribe(observer: Observer[E]): Subscription = {
-    val subscription = super.subscribe(observer)
-    events foreach { observer.onNext(_) }
-    if (error.isDefined) observer.onError(error.get)
-    else if (completed) observer.onCompleted()
-    subscription
+  override def subscribe(observer: Observer[A]): Subscription = CurrentThreadScheduler runImmediate {
+    val result = new FutureSubscription
+    val it = values.iterator
+    result.set(scheduler scheduleRecursive {
+      self =>
+        if (it.hasNext) {
+          it.next.accept(observer)
+          self()
+        } else {
+          result.set(super.subscribe(observer))
+        }
+    })
+    result
   }
 
-  override def onNext(event: E) {
-    super.onNext(event)
+  override def onNext(value: A) {
     if (!completed) {
-      events = events enqueue event
+      values = values enqueue OnNext(value)
     }
+    super.onNext(value)
+  }
+
+  override def onCompleted() {
+    if (!completed) {
+      values = values enqueue OnCompleted
+    }
+    super.onCompleted()
+  }
+
+  override def onError(error: Exception) {
+    if (!completed) {
+      values = values enqueue OnError(error)
+    }
+    super.onError(error)
   }
 }

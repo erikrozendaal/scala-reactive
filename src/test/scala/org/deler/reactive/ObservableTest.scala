@@ -209,6 +209,14 @@ class ObservableTest extends Specification with JUnit with Mockito {
   }
 
 
+  "Observable.toSeq" should {
+    "return all values until observable is completed" in {
+      val seq = Observable.interval(new Duration(10)).take(5).toSeq
+
+      seq must be equalTo (0 to 4)
+    }
+  }
+
   class TestObserver[T](scheduler: Scheduler) extends Observer[T] {
     private var _notifications = immutable.Queue[(Int, Notification[T])]()
 
@@ -336,12 +344,24 @@ class ObservableTest extends Specification with JUnit with Mockito {
     val result = new ReplaySubject[Notification[Any]]
     val subscription = (first ++ second).materialize.subscribe(result)
 
+    "with empty first should equal second" in {
+      first.onCompleted()
+      second.onNext("first")
+      second.onCompleted()
+
+      result.onCompleted()
+
+      result.toSeq must be equalTo Seq(OnNext("first"), OnCompleted)
+    }
+
     "first provide the values from the first observable followed by the second observable" in {
       first.onNext("first")
       first.onNext("second")
       first.onCompleted()
       second.onNext("third")
       second.onCompleted()
+
+      result.onCompleted()
 
       result.toSeq must be equalTo Seq(OnNext("first"), OnNext("second"), OnNext("third"), OnCompleted)
     }
@@ -353,12 +373,16 @@ class ObservableTest extends Specification with JUnit with Mockito {
       second.onNext("second")
       second.onCompleted()
 
+      result.onCompleted()
+
       result.toSeq must be equalTo Seq(OnNext("first"), OnNext("second"), OnCompleted)
     }
 
     "terminate on error in first observable" in {
       first.onError(ex)
       second.onNext("unseen")
+
+      result.onCompleted()
 
       result.toSeq must be equalTo Seq(OnError(ex))
     }
@@ -369,6 +393,8 @@ class ObservableTest extends Specification with JUnit with Mockito {
       first.onCompleted()
       second.onNext("second")
 
+      result.onCompleted()
+
       result.toSeq must beEmpty
     }
 
@@ -378,27 +404,31 @@ class ObservableTest extends Specification with JUnit with Mockito {
       subscription.close()
       second.onNext("second")
 
+      result.onCompleted()
+
       result.toSeq must be equalTo Seq(OnNext("first"))
     }
   }
 
   "materialized observables" should {
     val observable = new ReplaySubject[String]
+    val observer = mock[Observer[Notification[String]]]
+
     "provide each value in the stream as an instance of Notification" in {
       observable.onNext("hello")
       observable.onCompleted()
 
-      val result = observable.materialize.toSeq
+      val result = observable.materialize.subscribe(observer)
 
-      result must be equalTo Seq(OnNext("hello"), OnCompleted)
+      there was one(observer).onNext(OnNext("hello")) then one(observer).onNext(OnCompleted)
     }
 
     "provide the error stream as an instance of OnError" in {
       observable.onError(ex)
 
-      val result = observable.materialize.toSeq
+      val result = observable.materialize.subscribe(observer)
 
-      result must be equalTo Seq(OnError(ex))
+      there was one(observer).onNext(OnError(ex))
     }
   }
 
