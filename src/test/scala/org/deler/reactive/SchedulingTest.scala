@@ -260,12 +260,12 @@ class SchedulingTest extends Specification with JUnit {
       shouldNotBeCalled must beFalse
     }
 
-    "run actions scheduled inside an ImmediateScheduler action after the scheduling action completes" in {
+    "be independent from ImmediateScheduler" in {
       var immediateCompleted = false
       var currentThreadCompleted = false
       immediate schedule {
         currentThread schedule {
-          immediateCompleted must beTrue
+          immediateCompleted must beFalse
           currentThreadCompleted = true
         }
         immediateCompleted = true

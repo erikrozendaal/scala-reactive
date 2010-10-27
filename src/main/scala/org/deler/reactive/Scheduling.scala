@@ -81,7 +81,30 @@ object Scheduler {
   val currentThread: Scheduler = new CurrentThreadScheduler
 }
 
-object ThreadLocalSchedule extends ThreadLocal[Schedule] {
+/**
+ * Scheduler that invokes the specified action immediately. Actions scheduled for the future execution will block
+ * the caller until the specified moment has arrived and the scheduled action has completed.
+ */
+class ImmediateScheduler extends Scheduler {
+  def now = new Instant
+
+  override def schedule(action: => Unit): Subscription = {
+    action
+    NullSubscription
+  }
+
+  override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
+    if (delay.getMillis > 0) {
+      Thread.sleep(delay.getMillis)
+    }
+    schedule(action)
+  }
+}
+
+/**
+ * Tracks state of the CurrentThreadScheduler.
+ */
+object CurrentThreadScheduler extends ThreadLocal[Schedule] {
   def runImmediate(action: => Subscription): Subscription = runWithSchedule(_ => action)
 
   def runWithSchedule(action: Schedule => Subscription): Subscription = {
@@ -118,28 +141,6 @@ object ThreadLocalSchedule extends ThreadLocal[Schedule] {
 }
 
 /**
- * Scheduler that invokes the specified action immediately. Actions scheduled for the future execution will block
- * the caller until the specified moment has arrived and the scheduled action has completed.
- */
-class ImmediateScheduler extends Scheduler {
-  def now = new Instant
-
-  override def schedule(action: => Unit): Subscription = {
-    ThreadLocalSchedule runImmediate {
-      action
-      NullSubscription
-    }
-  }
-
-  override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
-    if (delay.getMillis > 0) {
-      Thread.sleep(delay.getMillis)
-    }
-    schedule(action)
-  }
-}
-
-/**
  * Schedules actions to run as soon as possible on the calling thread. As soon as possible means:
  *
  * <ol>
@@ -155,7 +156,7 @@ class CurrentThreadScheduler extends Scheduler {
   def now = new Instant
 
   override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
-    ThreadLocalSchedule.runWithSchedule {
+    CurrentThreadScheduler.runWithSchedule {
       schedule =>
         schedule.enqueue(at, () => action)
     }

@@ -210,7 +210,7 @@ object Observable {
   }
 
   def createWithSubscription[A](delegate: Observer[A] => Subscription): Observable[A] = new Observable[A] {
-    override def subscribe(observer: Observer[A]) = ThreadLocalSchedule runImmediate delegate(observer)
+    override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate delegate(observer)
   }
 
   def empty[A](implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = createWithSubscription {
