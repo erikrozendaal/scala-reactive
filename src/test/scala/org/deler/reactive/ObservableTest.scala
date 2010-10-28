@@ -410,7 +410,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "materialized observables" should {
+  "Observable.materialize" should {
     val observable = new ReplaySubject[String]
     val observer = mock[Observer[Notification[String]]]
 
@@ -432,7 +432,7 @@ class ObservableTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "dematerialized observables" should {
+  "Observable.dematerialize" should {
     val observable = new Subject[Notification[String]]
     val observer = mock[Observer[String]]
 
@@ -482,6 +482,26 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
       there was one(observer).onError(ex)
       there were noMoreCallsTo(observer)
+    }
+  }
+
+  "Observable exception handling" should {
+    "raise an error" in {
+      Observable.raise(ex)(scheduler).subscribe(observer)
+
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(1 -> OnError(ex))
+    }
+
+    "switch to next rescue source on error" in {
+      val errorSource = Observable.raise(ex)(scheduler)
+      val rescueSource = Observable.value("rescue")(scheduler)
+      errorSource.rescue(rescueSource).subscribe(observer)
+
+      scheduler.run()
+
+      observer.notifications must be equalTo Seq(2 -> OnNext("rescue"), 3 -> OnCompleted)
     }
   }
 

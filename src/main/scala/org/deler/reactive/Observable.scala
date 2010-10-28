@@ -189,6 +189,20 @@ trait Observable[+A] {
     resultToStream
   }
 
+  def rescue[B >: A](source: Observable[B]): Observable[B] = createWithSubscription {
+    observer =>
+      val result = new CompositeSubscription
+      val selfSubscription = new MutableSubscription
+      result.add(selfSubscription)
+      selfSubscription.set(self.subscribe(new RelayObserver(observer) {
+        override def onError(error: Exception) {
+          result.remove(selfSubscription)
+          result.add(source.subscribe(observer))
+        }
+      }))
+      result
+  }
+
 }
 
 object Observable {
@@ -224,7 +238,12 @@ object Observable {
 
   def empty[A](implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = createWithSubscription {
     observer =>
-      scheduler schedule {observer.onCompleted()}
+      scheduler schedule observer.onCompleted()
+  }
+
+  def raise[Nothing](error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithSubscription {
+    observer =>
+      scheduler schedule observer.onError(error)
   }
 
   def value[A](value: A)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = {
