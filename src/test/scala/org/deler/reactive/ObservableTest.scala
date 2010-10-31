@@ -53,30 +53,29 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   }
 
-  "Observable.iterate" should {
+  "Observable.interval" should {
     "generate a sequence value seperated by duration" in {
-      val observer = new TestObserver[Int](Scheduler.currentThread)
+      val notifications = scheduler.run {Observable.interval(new Duration(300))(scheduler)}
 
-      Observable.interval(new Duration(100)).take(3).subscribe(observer)
-
-      observer.notifications.map(_._2) must be equalTo Seq(OnNext(0), OnNext(1), OnNext(2), OnCompleted)
+      notifications must be equalTo Seq(500 -> OnNext(0), 800 -> OnNext(1))
     }
   }
 
   "Iterable.toObservable" should {
+    implicit val defaultToTestScheduler = scheduler
 
     "invoke onComplete when empty" in {
-      val notifications = scheduler.run(Seq().toObservable(scheduler))
+      val notifications = scheduler.run(Seq().toObservable)
 
       notifications must be equalTo Seq(201 -> OnCompleted)
     }
     "invoke onNext for each contained element followed by onComplete" in {
-      val notifications = scheduler.run(Seq("first", "second").toObservable(scheduler))
+      val notifications = scheduler.run(Seq("first", "second").toObservable)
 
       notifications must be equalTo Seq(201 -> OnNext("first"), 202 -> OnNext("second"), 203 -> OnCompleted)
     }
     "stop producing values when the subscription is closed" in {
-      val notifications = scheduler.run(Seq("first", "second").toObservable(scheduler), unsubscribeAt = new Instant(202))
+      val notifications = scheduler.run(Seq("first", "second").toObservable, unsubscribeAt = new Instant(202))
 
       notifications must be equalTo Seq(201 -> OnNext("first"))
     }
