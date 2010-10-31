@@ -16,6 +16,9 @@ found at http://blogs.msdn.com/b/rxteam/archive/2010/07/15/rx-hands-on-labs-publ
 Another interesting paper on Scala based reactive programming can be found at:
 http://lamp.epfl.ch/~imaier/pub/DeprecatingObserversTR2010.pdf
 
+The Rx Design Guidelines (http://blogs.msdn.com/b/rxteam/archive/2010/10/28/rx-design-guidelines.aspx)
+gives good information on how to write reactive code.
+
 
 EXAMPLES
 --------
