@@ -158,8 +158,8 @@ trait Observable[+A] {
 
         override def onNext(value: A) = {
           if (count < n) {
-            super.onNext(value)
             count += 1
+            super.onNext(value)
           }
           if (count >= n) {
             result.close()

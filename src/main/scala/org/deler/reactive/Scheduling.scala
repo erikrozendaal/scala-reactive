@@ -220,9 +220,31 @@ class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler
 
 }
 
+class TestObserver[T](scheduler: Scheduler) extends Observer[T] {
+  private var _notifications = immutable.Queue[(Int, Notification[T])]()
+
+  def notifications = _notifications.toSeq
+
+  override def onCompleted() {
+    _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnCompleted)
+  }
+
+  override def onError(error: Exception) {
+    _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnError(error))
+  }
+
+  override def onNext(value: T) {
+    _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnNext(value))
+  }
+
+}
+
 /**
  * A virtual scheduler that ensures actions scheduled inside other actions cannot occur at the same 'virtual' time.
  * The time is increased by one before scheduling, allowing you to trace casuality.
+ *
+ * Inspired by the <a href="http://blogs.msdn.com/b/jeffva/archive/2010/08/27/testing-rx.aspx">Testing RX</a> blog and
+ * video.
  */
 class TestScheduler extends VirtualScheduler(new Instant(0)) {
   override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
@@ -232,6 +254,20 @@ class TestScheduler extends VirtualScheduler(new Instant(0)) {
       at
     }
     super.scheduleAt(t)(action)
+  }
+
+  def run[T](action: => Observable[T], unsubscribeAt: Instant = new Instant(1000)): Seq[(Int, Notification[T])] = {
+    val observer = new TestObserver[T](this)
+    var observable: Observable[T] = null;
+    val subscription = new MutableSubscription
+
+    scheduleAt(new Instant(100)) { observable = action }
+    scheduleAt(new Instant(200)) { subscription.set(observable.subscribe(observer)) }
+    scheduleAt(unsubscribeAt) { subscription.close() }
+
+    run()
+
+    observer.notifications
   }
 
 }
