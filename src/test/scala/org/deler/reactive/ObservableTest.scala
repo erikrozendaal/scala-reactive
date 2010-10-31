@@ -135,6 +135,12 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       notifications must be equalTo Seq(201 -> OnNext("eulav"), 202 -> OnCompleted)
     }
 
+    "handle error on exception in map function" in {
+      val notifications = scheduler run {Observable("value").map(_ => throw ex)}
+
+      notifications must be equalTo Seq(201 -> OnError(ex))
+    }
+
     "allow filtering using for-comprehension" in {
       val observable = Observable("first", "second")
 
@@ -143,6 +149,12 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       }
 
       notifications must be equalTo Seq(201 -> OnNext("tsrif"), 203 -> OnCompleted)
+    }
+
+    "handle error on exception in filter predicate" in {
+      val notifications = scheduler run {Observable("value").filter(_ => throw ex)}
+
+      notifications must be equalTo Seq(201 -> OnError(ex))
     }
 
     "allow for nested for-comprehension" in {

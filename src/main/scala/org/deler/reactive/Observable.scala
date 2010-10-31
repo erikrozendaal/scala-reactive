@@ -80,11 +80,20 @@ trait Observable[+A] {
   def filter(predicate: A => Boolean): Observable[A] = createWithSubscription {
     observer =>
       self.subscribe(new Observer[A] {
-        override def onCompleted() = observer.onCompleted()
+        val relay = new RelayObserver[A](observer)
 
-        override def onError(error: Exception) = observer.onError(error)
+        override def onCompleted() = relay.onCompleted()
 
-        override def onNext(value: A) = if (predicate(value)) observer.onNext(value)
+        override def onError(error: Exception) = relay.onError(error)
+
+        override def onNext(value: A) {
+          val p = Notification(predicate(value))
+          p match {
+            case OnNext(true) => relay.onNext(value)
+            case OnError(error) => relay.onError(error)
+            case _ =>
+          }
+        }
       })
   }
 
@@ -99,11 +108,15 @@ trait Observable[+A] {
   def map[B](f: A => B): Observable[B] = createWithSubscription {
     observer =>
       self.subscribe(new Observer[A] {
-        override def onCompleted() = observer.onCompleted()
+        val relay = new RelayObserver[B](observer)
 
-        override def onError(error: Exception) = observer.onError(error)
+        override def onCompleted() = relay.onCompleted()
 
-        override def onNext(value: A) = observer.onNext(f(value))
+        override def onError(error: Exception) = relay.onError(error)
+
+        override def onNext(value: A) {
+          Notification(f(value)).accept(relay)
+        }
       })
   }
 
@@ -158,8 +171,13 @@ trait Observable[+A] {
       result.add(scheduler scheduleRecursive {
         recurs =>
           subscription.set(self.subscribe(
-            onNext = {value => observer.onNext(value)},
-            onError = {error => result.close(); observer.onError(error)},
+            onNext = {
+              value => observer.onNext(value)
+            },
+            onError = {
+              error => result.close();
+              observer.onError(error)
+            },
             onCompleted = () => recurs()))
       })
       result
@@ -182,8 +200,13 @@ trait Observable[+A] {
           } else {
             count += 1
             subscription.set(self.subscribe(
-              onNext = {value => observer.onNext(value)},
-              onError = {error => result.close(); observer.onError(error)},
+              onNext = {
+                value => observer.onNext(value)
+              },
+              onError = {
+                error => result.close();
+                observer.onError(error)
+              },
               onCompleted = () => recurs()))
           }
       })
@@ -223,9 +246,15 @@ trait Observable[+A] {
 
     def resultToStream: Stream[A] = {
       result.take match {
-        case OnCompleted => {subscription.close(); Stream.Empty}
+        case OnCompleted => {
+          subscription.close();
+          Stream.Empty
+        }
         case OnNext(value) => value #:: resultToStream
-        case OnError(error) => {subscription.close(); throw error}
+        case OnError(error) => {
+          subscription.close();
+          throw error
+        }
       }
     }
 
