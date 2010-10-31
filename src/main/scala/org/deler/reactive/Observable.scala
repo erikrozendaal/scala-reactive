@@ -148,7 +148,25 @@ trait Observable[+A] {
   }
 
   /**
-   * A new observable that only produces up to <code>n</code> values from this observable and then completes.
+   * Repeats the source observable indefinitely.
+   */
+  def repeat(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
+    observer =>
+      val result = new CompositeSubscription
+      val subscription = new MutableSubscription
+      result.add(subscription)
+      result.add(scheduler scheduleRecursive {
+        recurs =>
+          subscription.set(self.subscribe(
+            onNext = {value => observer.onNext(value)},
+            onError = {error => result.close(); observer.onError(error)},
+            onCompleted = () => recurs()))
+      })
+      result
+  }
+
+  /**
+   *  A new observable that only produces up to <code>n</code> values from this observable and then completes.
    */
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>

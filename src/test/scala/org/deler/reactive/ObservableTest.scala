@@ -369,6 +369,31 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "repeated observables" should {
+    implicit val defaultToTestScheduler = scheduler
+
+    "not publish anything when source is empty" in {
+      val notifications = scheduler.run {Observable.empty.repeat}
+
+      notifications must beEmpty
+    }
+
+    "republish single value" in {
+      val notifications = scheduler.run {Observable.value("value").repeat.take(3)}
+
+      notifications must be equalTo Seq(202 -> OnNext("value"), 205 -> OnNext("value"), 208 -> OnNext("value"), 208 -> OnCompleted)
+    }
+
+    "repeat source observable" in {
+      val notifications = scheduler.run {Observable(1, 2, 3).repeat.take(7)}
+
+      notifications must be equalTo Seq(
+        202 -> OnNext(1), 203 -> OnNext(2), 204 -> OnNext(3),
+        207 -> OnNext(1), 208 -> OnNext(2), 209 -> OnNext(3),
+        212 -> OnNext(1), 212 -> OnCompleted)
+    }
+  }
+
   "Observable.materialize" should {
     val observable = new ReplaySubject[String]
     val observer = mock[Observer[Notification[String]]]
