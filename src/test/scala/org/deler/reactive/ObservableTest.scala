@@ -6,9 +6,10 @@ import org.specs.mock.Mockito
 import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import scala.collection._
 import org.joda.time.{Duration, Instant}
+import org.scalacheck.{Gen, Arbitrary, Prop}
 
 @RunWith(classOf[JUnitSuiteRunner])
-class ObservableTest extends Specification with JUnit with Mockito {
+class ObservableTest extends Specification with JUnit with Mockito with ScalaCheck {
   import Observable.iterableToObservableWrapper
 
 
@@ -16,6 +17,13 @@ class ObservableTest extends Specification with JUnit with Mockito {
 
   val scheduler = new TestScheduler
   val observer = new TestObserver[String](scheduler)
+
+  /**
+   * Generate arbitrary sequences for use with ScalaCheck.
+   */
+  implicit def arbitraryObservable[T](implicit a: Arbitrary[List[T]]): Arbitrary[Observable[T]] = Arbitrary {
+    for (s <- Arbitrary.arbitrary[List[T]]) yield s.toObservable
+  }
 
   "Observable.create" should {
     "invoke delegate on subscription with the observer as argument" in {
@@ -306,26 +314,16 @@ class ObservableTest extends Specification with JUnit with Mockito {
     val result = new ReplaySubject[Notification[Any]]
     val subscription = (first ++ second).materialize.subscribe(result)
 
-    "with empty first should equal second" in {
-      first.onCompleted()
-      second.onNext("first")
-      second.onCompleted()
-
-      result.onCompleted()
-
-      result.toSeq must be equalTo Seq(OnNext("first"), OnCompleted)
+    "be equal to second observable when first is empty" in {
+      Prop.forAll {observable: Observable[Int] => (Observable.empty ++ observable).toSeq == observable.toSeq} must pass
     }
 
-    "first provide the values from the first observable followed by the second observable" in {
-      first.onNext("first")
-      first.onNext("second")
-      first.onCompleted()
-      second.onNext("third")
-      second.onCompleted()
+    "be equal to first observable when second is empty" in {
+      Prop.forAll {observable: Observable[Int] => (observable ++ Observable.empty).toSeq == observable.toSeq} must pass
+    }
 
-      result.onCompleted()
-
-      result.toSeq must be equalTo Seq(OnNext("first"), OnNext("second"), OnNext("third"), OnCompleted)
+    "be equal to first and second concatenated" in {
+      Prop.forAll {(o1: Observable[Int], o2: Observable[Int]) => (o1 ++ o2).toSeq == (o1.toSeq ++ o2.toSeq)} must pass
     }
 
     "should only subscribe to second observable after first has completed" in {

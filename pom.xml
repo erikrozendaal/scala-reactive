@@ -67,6 +67,11 @@
             <version>1.8.5</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.scala-tools.testing</groupId>
+            <artifactId>scalacheck_2.8.0</artifactId>
+            <version>1.7</version>
+        </dependency>
     </dependencies>
 
     <build>
