@@ -166,7 +166,32 @@ trait Observable[+A] {
   }
 
   /**
-   *  A new observable that only produces up to <code>n</code> values from this observable and then completes.
+   * Repeats the source observable <code>n</code> times.
+   */
+  def repeatN(n: Int)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
+    observer =>
+      var count = 0
+      val result = new CompositeSubscription
+      val subscription = new MutableSubscription
+      result.add(subscription)
+      result.add(scheduler scheduleRecursive {
+        recurs =>
+          if (count >= n) {
+            result.close()
+            observer.onCompleted()
+          } else {
+            count += 1
+            subscription.set(self.subscribe(
+              onNext = {value => observer.onNext(value)},
+              onError = {error => result.close(); observer.onError(error)},
+              onCompleted = () => recurs()))
+          }
+      })
+      result
+  }
+
+  /**
+   * A new observable that only produces up to <code>n</code> values from this observable and then completes.
    */
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>
@@ -198,9 +223,9 @@ trait Observable[+A] {
 
     def resultToStream: Stream[A] = {
       result.take match {
-        case OnCompleted => subscription.close(); Stream.Empty
+        case OnCompleted => {subscription.close(); Stream.Empty}
         case OnNext(value) => value #:: resultToStream
-        case OnError(error) => subscription.close(); throw error
+        case OnError(error) => {subscription.close(); throw error}
       }
     }
 

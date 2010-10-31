@@ -392,6 +392,24 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         207 -> OnNext(1), 208 -> OnNext(2), 209 -> OnNext(3),
         212 -> OnNext(1), 212 -> OnCompleted)
     }
+
+    "repeat zero" in {
+      val notifications = scheduler.run {Observable.value("value").repeatN(0)}
+
+      notifications must be equalTo Seq(201 -> OnCompleted)
+    }
+
+    "repeat once" in {
+      val notifications = scheduler.run {Observable.value("value").repeatN(1)}
+
+      notifications must be equalTo Seq(202 -> OnNext("value"), 204 -> OnCompleted)
+    }
+
+    "repeat twice" in {
+      val notifications = scheduler.run {Observable.value("value").repeatN(2)}
+
+      notifications must be equalTo Seq(202 -> OnNext("value"), 205 -> OnNext("value"), 207 -> OnCompleted)
+    }
   }
 
   "Observable.materialize" should {
