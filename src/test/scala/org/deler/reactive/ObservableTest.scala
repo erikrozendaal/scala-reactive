@@ -51,6 +51,39 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       actionCalled must be equalTo true
     }
 
+    "enforce observable contract (no onNext after onCompleted)" in {
+      val notifications = scheduler run { Observable.create {
+        observer: Observer[String] =>
+          observer.onCompleted()
+          observer.onNext("ignored")
+          () => {}
+      }}
+
+      notifications must be equalTo Seq(200 -> OnCompleted)
+    }
+
+    "enforce observable contract (no onNext after onError)" in {
+      val notifications = scheduler run { Observable.create {
+        observer: Observer[String] =>
+          observer.onError(ex)
+          observer.onNext("ignored")
+          () => {}
+      }}
+
+      notifications must be equalTo Seq(200 -> OnError(ex))
+    }
+
+    "close subscription after onCompleted" in {
+      var closed = false
+      Observable.create {
+        observer: Observer[String] =>
+          observer.onCompleted()
+          () => { closed = true }
+      }.subscribe(observer)
+
+      closed must beTrue
+    }
+
   }
 
   "Observable.interval" should {

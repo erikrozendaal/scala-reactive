@@ -81,16 +81,14 @@ trait Observable[+A] {
   def filter(predicate: A => Boolean): Observable[A] = createWithSubscription {
     observer =>
       self.subscribe(new Observer[A] {
-        val relay = new RelayObserver[A](observer)
+        override def onCompleted() = observer.onCompleted()
 
-        override def onCompleted() = relay.onCompleted()
-
-        override def onError(error: Exception) = relay.onError(error)
+        override def onError(error: Exception) = observer.onError(error)
 
         override def onNext(value: A) {
           catching(classOf[Exception]) either predicate(value) match {
-            case Left(error) => relay.onError(error.asInstanceOf[Exception])
-            case Right(true) => relay.onNext(value)
+            case Left(error) => observer.onError(error.asInstanceOf[Exception])
+            case Right(true) => observer.onNext(value)
             case Right(false) =>
           }
         }
@@ -108,16 +106,14 @@ trait Observable[+A] {
   def map[B](f: A => B): Observable[B] = createWithSubscription {
     observer =>
       self.subscribe(new Observer[A] {
-        val relay = new RelayObserver[B](observer)
+        override def onCompleted() = observer.onCompleted()
 
-        override def onCompleted() = relay.onCompleted()
-
-        override def onError(error: Exception) = relay.onError(error)
+        override def onError(error: Exception) = observer.onError(error)
 
         override def onNext(value: A) {
           catching(classOf[Exception]) either f(value) match {
-            case Left(error) => relay.onError(error.asInstanceOf[Exception])
-            case Right(mapped) => relay.onNext(mapped)
+            case Left(error) => observer.onError(error.asInstanceOf[Exception])
+            case Right(mapped) => observer.onNext(mapped)
           }
         }
       })
@@ -149,18 +145,10 @@ trait Observable[+A] {
    */
   def perform(action: A => Unit): Observable[A] = createWithSubscription {
     observer =>
-      self.subscribe(new Observer[A] {
-        override def onCompleted() = observer.onCompleted()
-
-        override def onError(error: Exception) = {
-          observer.onError(error)
-        }
-
-        override def onNext(value: A) = {
-          action(value);
-          observer.onNext(value)
-        }
-      })
+      self.subscribe(
+        onNext = {value => action(value); observer.onNext(value)},
+        onError = observer.onError,
+        onCompleted = observer.onCompleted)
   }
 
   /**
@@ -174,14 +162,9 @@ trait Observable[+A] {
       result.add(scheduler scheduleRecursive {
         recurs =>
           subscription.set(self.subscribe(
-            onNext = {
-              value => observer.onNext(value)
-            },
-            onError = {
-              error => result.close();
-              observer.onError(error)
-            },
-            onCompleted = () => recurs()))
+            onNext = observer.onNext,
+            onError = observer.onError,
+            onCompleted = recurs))
       })
       result
   }
@@ -198,19 +181,13 @@ trait Observable[+A] {
       result.add(scheduler scheduleRecursive {
         recurs =>
           if (count >= n) {
-            result.close()
             observer.onCompleted()
           } else {
             count += 1
             subscription.set(self.subscribe(
-              onNext = {
-                value => observer.onNext(value)
-              },
-              onError = {
-                error => result.close();
-                observer.onError(error)
-              },
-              onCompleted = () => recurs()))
+              onNext = observer.onNext,
+              onError = observer.onError,
+              onCompleted = recurs))
           }
       })
       result
@@ -221,22 +198,21 @@ trait Observable[+A] {
    */
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>
+      var count: Int = 0
       val result = new MutableSubscription
-      result.set(self.subscribe(new RelayObserver(observer) {
-        var count: Int = 0
-
-        override def onNext(value: A) = {
-          if (count < n) {
-            count += 1
-            super.onNext(value)
-          }
-          if (count >= n) {
-            result.close()
-            onCompleted()
-          }
-        }
-
-      }))
+      result.set(self.subscribe(
+        onNext = {
+          value =>
+            if (count < n) {
+              count += 1
+              observer.onNext(value)
+            }
+            if (count >= n) {
+              observer.onCompleted()
+            }
+        },
+        onError = observer.onError,
+        onCompleted = observer.onCompleted))
       result
   }
 
@@ -269,12 +245,14 @@ trait Observable[+A] {
       val result = new CompositeSubscription
       val selfSubscription = new MutableSubscription
       result.add(selfSubscription)
-      selfSubscription.set(self.subscribe(new RelayObserver(observer) {
-        override def onError(error: Exception) {
-          result.remove(selfSubscription)
-          result.add(source.subscribe(observer))
-        }
-      }))
+      selfSubscription.set(self.subscribe(
+        onNext = observer.onNext,
+        onCompleted = observer.onCompleted,
+        onError = {
+          error =>
+            result.remove(selfSubscription)
+            result.add(source.subscribe(observer))
+        }))
       result
   }
 
@@ -308,15 +286,19 @@ object Observable {
   }
 
   def createWithSubscription[A](delegate: Observer[A] => Subscription): Observable[A] = new Observable[A] {
-    override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate delegate(observer)
+    override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate {
+      val subscription = new MutableSubscription
+      subscription.set(delegate(new RelayObserver(observer, subscription)))
+      subscription
+    }
   }
 
-  def empty[A](implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = createWithSubscription {
+  def empty(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithSubscription {
     observer =>
       scheduler schedule observer.onCompleted()
   }
 
-  def raise[Nothing](error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithSubscription {
+  def raise(error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithSubscription {
     observer =>
       scheduler schedule observer.onError(error)
   }
@@ -328,14 +310,12 @@ object Observable {
   def interval(interval: Duration)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[Int] = createWithSubscription {
     observer =>
       var counter = 0
-      val result = new MutableSubscription
-      result.set(scheduler.scheduleRecursiveAfter(interval) {
+      scheduler.scheduleRecursiveAfter(interval) {
         reschedule =>
           observer.onNext(counter)
           counter += 1
           reschedule(interval)
-      })
-      result
+      }
   }
 
   class IterableToObservableWrapper[+A](val iterable: Iterable[A]) {
@@ -404,15 +384,10 @@ object Observable {
   class DematerializeObservableWrapper[A](source: Observable[Notification[A]]) {
     def dematerialize: Observable[A] = createWithSubscription {
       observer =>
-        val relay = new RelayObserver(observer)
-        source.subscribe(new Observer[Notification[A]] {
-          override def onCompleted() = relay.onCompleted()
-
-          override def onError(error: Exception) = relay.onError(error)
-
-          override def onNext(notification: Notification[A]) = notification.accept(relay)
-        })
-
+        source.subscribe(
+          onNext = {notification => notification.accept(observer)},
+          onError = observer.onError,
+          onCompleted = observer.onCompleted)
     }
   }
 
@@ -423,20 +398,24 @@ object Observable {
 /**
  * Observer that passes on all notifications to a <code>target</code> observer, taking care that no more notifications
  * are send after either <code>onError</code> or <code>onCompleted</code> occurred.
+ *
+ * The subscription to the underlying source is also closed after onCompleted or onError is received.
  */
-private class RelayObserver[-A](target: Observer[A]) extends Observer[A] {
+private class RelayObserver[-A](target: Observer[A], subscription: Subscription) extends Observer[A] {
   private var completed = false
 
   override def onCompleted() {
     if (completed) return
     completed = true
     target.onCompleted()
+    subscription.close()
   }
 
   override def onError(error: Exception) {
     if (completed) return
     completed = true
     target.onError(error);
+    subscription.close()
   }
 
   override def onNext(value: A) {
