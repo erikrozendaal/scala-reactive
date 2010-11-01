@@ -52,23 +52,27 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
 
     "enforce observable contract (no onNext after onCompleted)" in {
-      val notifications = scheduler run { Observable.create {
-        observer: Observer[String] =>
-          observer.onCompleted()
-          observer.onNext("ignored")
-          () => {}
-      }}
+      val notifications = scheduler run {
+        Observable.create {
+          observer: Observer[String] =>
+            observer.onCompleted()
+            observer.onNext("ignored")
+            () => {}
+        }
+      }
 
       notifications must be equalTo Seq(200 -> OnCompleted)
     }
 
     "enforce observable contract (no onNext after onError)" in {
-      val notifications = scheduler run { Observable.create {
-        observer: Observer[String] =>
-          observer.onError(ex)
-          observer.onNext("ignored")
-          () => {}
-      }}
+      val notifications = scheduler run {
+        Observable.create {
+          observer: Observer[String] =>
+            observer.onError(ex)
+            observer.onNext("ignored")
+            () => {}
+        }
+      }
 
       notifications must be equalTo Seq(200 -> OnError(ex))
     }
@@ -78,7 +82,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       Observable.create {
         observer: Observer[String] =>
           observer.onCompleted()
-          () => { closed = true }
+          () => {closed = true}
       }.subscribe(observer)
 
       closed must beTrue
@@ -353,64 +357,82 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
   }
 
   "concatenated observables" should {
-    val first = new Subject[String]
-    val second = new Subject[String]
-    val result = new ReplaySubject[Notification[Any]]
-    val subscription = (first ++ second).materialize.subscribe(result)
-
-    "be equal to second observable when first is empty" in {
-      Prop.forAll {observable: Observable[Int] => (Observable.empty ++ observable).toSeq == observable.toSeq} must pass
-    }
-
-    "be equal to first observable when second is empty" in {
-      Prop.forAll {observable: Observable[Int] => (observable ++ Observable.empty).toSeq == observable.toSeq} must pass
-    }
 
     "be equal to first and second concatenated" in {
       Prop.forAll {(o1: Observable[Int], o2: Observable[Int]) => (o1 ++ o2).toSeq == (o1.toSeq ++ o2.toSeq)} must pass
     }
 
-    "should only subscribe to second observable after first has completed" in {
-      first.onNext("first")
-      second.onNext("ignored")
-      first.onCompleted()
-      second.onNext("second")
-      second.onCompleted()
+    "should subscribe to second when first completes" in {
+      val first = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        400 -> OnCompleted))
+      val second = scheduler.createHotObservable(Seq(
+        399 -> OnNext("early"),
+        400 -> OnNext("second"),
+        500 -> OnCompleted))
 
-      result.onCompleted()
+      val notifications = scheduler run {first ++ second}
 
-      result.toSeq must be equalTo Seq(OnNext("first"), OnNext("second"), OnCompleted)
+      notifications must be equalTo Seq(
+        300 -> OnNext("first"),
+        400 -> OnNext("second"),
+        500 -> OnCompleted)
+
+      first.subscriptions must be equalTo Seq(200 -> 400)
+      second.subscriptions must be equalTo Seq(400 -> 500)
     }
 
-    "terminate on error in first observable" in {
-      first.onError(ex)
-      second.onNext("unseen")
+    "not subscribe to second when first terminates with an error" in {
+      val first = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        400 -> OnError(ex)))
+      val second = scheduler.createHotObservable(Seq(
+        400 -> OnNext("ignored"),
+        500 -> OnCompleted))
 
-      result.onCompleted()
+      val notifications = scheduler run {first ++ second}
 
-      result.toSeq must be equalTo Seq(OnError(ex))
+      notifications must be equalTo Seq(
+        300 -> OnNext("first"),
+        400 -> OnError(ex))
+
+      first.subscriptions must be equalTo Seq(200 -> 400)
+      second.subscriptions must beEmpty
     }
 
-    "terminate when subscription is closed in first sequence" in {
-      subscription.close()
-      first.onNext("first")
-      first.onCompleted()
-      second.onNext("second")
+    "terminate when subscription is closed while observing first sequence" in {
+      val first = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        400 -> OnCompleted))
+      val second = scheduler.createHotObservable(Seq(
+        400 -> OnNext("ignored"),
+        500 -> OnCompleted))
 
-      result.onCompleted()
+      val notifications = scheduler.run({first ++ second}, unsubscribeAt = new Instant(350))
 
-      result.toSeq must beEmpty
+      notifications must be equalTo Seq(
+        300 -> OnNext("first"))
+
+      first.subscriptions must be equalTo Seq(200 -> 350)
+      second.subscriptions must beEmpty
     }
 
-    "terminate when subscription is closed in second sequence" in {
-      first.onNext("first")
-      first.onCompleted()
-      subscription.close()
-      second.onNext("second")
+    "terminate when subscription is closed while obesrving second sequence" in {
+      val first = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        400 -> OnCompleted))
+      val second = scheduler.createHotObservable(Seq(
+        400 -> OnNext("second"),
+        500 -> OnCompleted))
 
-      result.onCompleted()
+      val notifications = scheduler.run({first ++ second}, unsubscribeAt = new Instant(450))
 
-      result.toSeq must be equalTo Seq(OnNext("first"))
+      notifications must be equalTo Seq(
+        300 -> OnNext("first"),
+        400 -> OnNext("second"))
+
+      first.subscriptions must be equalTo Seq(200 -> 400)
+      second.subscriptions must be equalTo Seq(400 -> 450)
     }
   }
 

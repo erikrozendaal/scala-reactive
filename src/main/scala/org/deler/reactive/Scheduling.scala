@@ -236,7 +236,45 @@ class TestObserver[T](scheduler: Scheduler) extends Observer[T] {
   override def onNext(value: T) {
     _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnNext(value))
   }
+}
 
+class TestHotObservable[T](scheduler: Scheduler) extends Observable[T] with Observer[T] {
+  private var _observers = Set[Observer[T]]()
+  private var _subscriptions = Set[Subscribe]()
+
+  def subscribe(observer: Observer[T]): Subscription = {
+    val result = new Subscribe(observer)
+    _subscriptions += result
+    result
+  }
+
+  def subscriptions: Seq[(Int, Int)] = {
+    val pairs = _subscriptions map {s => s.subscribedAt -> s.unsubscribedAt.getOrElse(-1)}
+    pairs.toArray.sorted
+  }
+
+  override def onNext(value: T) {
+    _observers foreach (_.onNext(value))
+  }
+
+  override def onError(error: Exception) {
+    _observers foreach (_.onError(error))
+  }
+
+  override def onCompleted() {
+    _observers foreach (_.onCompleted())
+  }
+
+  private class Subscribe(observer: Observer[T]) extends Subscription {
+    val subscribedAt = scheduler.now.getMillis.toInt
+    var unsubscribedAt: Option[Int] = None
+    _observers += observer;
+
+    def close() {
+      _observers -= observer;
+      unsubscribedAt = Some(scheduler.now.getMillis.toInt)
+    }
+  }
 }
 
 /**
@@ -261,15 +299,23 @@ class TestScheduler extends VirtualScheduler(new Instant(0)) {
     var observable: Observable[T] = null;
     val subscription = new MutableSubscription
 
-    scheduleAt(new Instant(100)) { observable = action }
-    scheduleAt(new Instant(200)) { subscription.set(observable.subscribe(observer)) }
-    scheduleAt(unsubscribeAt) { subscription.close() }
+    scheduleAt(new Instant(100)) {observable = action}
+    scheduleAt(new Instant(200)) {subscription.set(observable.subscribe(observer))}
+    scheduleAt(unsubscribeAt) {subscription.close()}
 
     run()
 
     observer.notifications
   }
 
+  def createHotObservable[T](notifications: Seq[(Int, Notification[T])]): TestHotObservable[T] = {
+    val result = new TestHotObservable[T](this)
+    notifications foreach {
+      case (at, notification) =>
+        scheduleAt(new Instant(at))(notification.accept(result))
+    }
+    result
+  }
 }
 
 trait LoggingScheduler extends Scheduler {

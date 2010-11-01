@@ -62,11 +62,15 @@ trait Observable[+A] {
    */
   def ++[B >: A](that: Observable[B]): Observable[B] = createWithSubscription {
     observer =>
-      val result = new FutureSubscription
-      result.set(self.subscribe(
+      val result = new CompositeSubscription
+      val thisSubscription = new MutableSubscription
+
+      thisSubscription.set(self.subscribe(
         onNext = {value => observer.onNext(value)},
-        onError = {error => observer.onError(error); result.close()},
-        onCompleted = {() => result.set(that.subscribe(observer))}))
+        onError = {error => observer.onError(error)},
+        onCompleted = {() => result.remove(thisSubscription); result.add(that.subscribe(observer))}))
+
+      result.add(thisSubscription)
       result
   }
 
