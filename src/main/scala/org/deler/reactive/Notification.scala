@@ -1,19 +1,5 @@
 package org.deler.reactive
 
-object Notification {
-  /**
-   * Lazily evaluates <code>action</code> and evaluates to <code>OnNext(value)</code> or <code>OnError(error)</code>
-   * depending on whether the action returns successfully or throws an exception.
-   */
-  def apply[T](action: => T): Notification[T] = {
-    try {
-      OnNext(action)
-    } catch {
-      case e: Exception => OnError(e)
-    }
-  }
-}
-
 /**
  * Represents a notification from an [[org.deler.reactive.Observable]] to an [[org.deler.reactive.Observer]].
  */

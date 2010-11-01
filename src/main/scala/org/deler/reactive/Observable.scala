@@ -1,6 +1,7 @@
 package org.deler.reactive
 
 import scala.collection._
+import scala.util.control.Exception._
 import org.joda.time.Duration
 import java.util.concurrent.LinkedBlockingQueue
 
@@ -87,11 +88,10 @@ trait Observable[+A] {
         override def onError(error: Exception) = relay.onError(error)
 
         override def onNext(value: A) {
-          val p = Notification(predicate(value))
-          p match {
-            case OnNext(true) => relay.onNext(value)
-            case OnError(error) => relay.onError(error)
-            case _ =>
+          catching(classOf[Exception]) either predicate(value) match {
+            case Left(error) => relay.onError(error.asInstanceOf[Exception])
+            case Right(true) => relay.onNext(value)
+            case Right(false) =>
           }
         }
       })
@@ -115,7 +115,10 @@ trait Observable[+A] {
         override def onError(error: Exception) = relay.onError(error)
 
         override def onNext(value: A) {
-          Notification(f(value)).accept(relay)
+          catching(classOf[Exception]) either f(value) match {
+            case Left(error) => relay.onError(error.asInstanceOf[Exception])
+            case Right(mapped) => relay.onNext(mapped)
+          }
         }
       })
   }
