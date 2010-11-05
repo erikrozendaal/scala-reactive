@@ -19,7 +19,7 @@ class SchedulingTest extends Specification with JUnit {
     count += 1
   }
 
-  "virtual schedule" should {
+  "virtual scheduler" should {
     "not run an action when it is scheduled" in {
       virtualScheduler schedule action()
 
