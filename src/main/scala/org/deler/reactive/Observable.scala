@@ -7,34 +7,34 @@ import java.util.concurrent.LinkedBlockingQueue
 
 /**
  * An observable can be subscribed to by an [[org.deler.reactive.Observer]]. Observables produce zero or more values
- * using <code>onNext</code> optionally terminated by either a call to <code>onCompleted</code> or <code>onError</code>.
+ * using `onNext` optionally terminated by either a call to `onCompleted` or `onError`.
  */
 trait Observable[+A] {
   self =>
   import Observable._
 
   /**
-   * Subscribes <code>observer</code>.
+   * Subscribes `observer`.
    */
   def subscribe(observer: Observer[A]): Subscription
 
   /**
-   * Subscribes <code>onNext</code> to every value produced by this Observable.
+   * Subscribes `onNext` to every value produced by this Observable.
    */
   def subscribe(onNext: A => Unit): Subscription = subscribe(onNext, defaultOnError, defaultOnCompleted)
 
   /**
-   * Subscribes <code>onNext</code> and <code>onError</code> to this Observable.
+   * Subscribes `onNext` and `onError` to this Observable.
    */
   def subscribe(onNext: A => Unit, onError: Exception => Unit): Subscription = subscribe(onNext, onError, defaultOnCompleted)
 
   /**
-   * Subscribes <code>onNext</code> and <code>onCompleted</code> to this Observable.
+   * Subscribes `onNext` and `onCompleted` to this Observable.
    */
   def subscribe(onNext: A => Unit, onCompleted: () => Unit): Subscription = subscribe(onNext, defaultOnError, onCompleted)
 
   /**
-   * Subscribes <code>onNext</code>, <code>onError</code>, and <code>onCompleted</code> to this Observable.
+   * Subscribes `onNext`, `onError`, and `onCompleted` to this Observable.
    */
   def subscribe(onNext: A => Unit, onError: Exception => Unit, onCompleted: () => Unit): Subscription = {
     val completedCallback = onCompleted
@@ -58,7 +58,7 @@ trait Observable[+A] {
   }
 
   /**
-   * Appends <code>that</code> observable to this observable.
+   * Appends `that` observable to this observable.
    */
   def ++[B >: A](that: Observable[B]): Observable[B] = createWithSubscription {
     observer =>
@@ -100,7 +100,7 @@ trait Observable[+A] {
   }
 
   /**
-   * Alias for <code>filter</code> that is used by the Scala for-loop construct.
+   * Alias for `filter` that is used by the Scala for-loop construct.
    */
   def withFilter(predicate: A => Boolean) = filter(predicate)
 
@@ -145,7 +145,7 @@ trait Observable[+A] {
   }
 
   /**
-   * A new observable that executes <code>action</code> for its side-effects for each value produced by this observable.
+   * A new observable that executes `action` for its side-effects for each value produced by this observable.
    */
   def perform(action: A => Unit): Observable[A] = createWithSubscription {
     observer =>
@@ -174,7 +174,7 @@ trait Observable[+A] {
   }
 
   /**
-   * Repeats the source observable <code>n</code> times.
+   * Repeats the source observable `n` times.
    */
   def repeatN(n: Int)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
     observer =>
@@ -198,7 +198,7 @@ trait Observable[+A] {
   }
 
   /**
-   * A new observable that only produces up to <code>n</code> values from this observable and then completes.
+   * A new observable that only produces up to `n` values from this observable and then completes.
    */
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>
@@ -280,17 +280,17 @@ object Observable {
     new IterableToObservableWrapper(values).toObservable(scheduler)
 
   /**
-   * The default <code>onNext</code> handler does nothing.
+   * The default `onNext` handler does nothing.
    */
   def defaultOnNext[A](value: A) {}
 
   /**
-   * The default <code>onError</code> handler throws the <code>error</code>.
+   * The default `onError` handler throws the `error`.
    */
   def defaultOnError(error: Exception) {throw error}
 
   /**
-   * The default <code>onCompleted</code> handler does nothing.
+   * The default `onCompleted` handler does nothing.
    */
   def defaultOnCompleted() {}
 
@@ -413,8 +413,8 @@ object Observable {
 }
 
 /**
- * Observer that passes on all notifications to a <code>target</code> observer, taking care that no more notifications
- * are send after either <code>onError</code> or <code>onCompleted</code> occurred.
+ * Observer that passes on all notifications to a `target` observer, taking care that no more notifications
+ * are send after either `onError` or `onCompleted` occurred.
  *
  * The subscription to the underlying source is also closed after onCompleted or onError is received.
  */

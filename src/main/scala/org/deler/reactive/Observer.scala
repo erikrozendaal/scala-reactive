@@ -6,17 +6,17 @@ package org.deler.reactive
  */
 trait Observer[-A] {
   /**
-   * Invoked for every value produced by an <code>Observable</code>
+   * Invoked for every value produced by an `Observable`
    */
   def onNext(value: A) {}
 
   /**
-   * Invoked when an error is produced by an <code>Observable</code>. No further notifications will happen.
+   * Invoked when an error is produced by an `Observable`. No further notifications will happen.
    */
   def onError(error: Exception) {}
 
   /**
-   * Invoked when an <code>Observable</code> completes. No further notifications will happen.
+   * Invoked when an `Observable` completes. No further notifications will happen.
    */
   def onCompleted() {}
 }

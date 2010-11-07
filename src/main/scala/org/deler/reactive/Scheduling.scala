@@ -10,34 +10,34 @@ import org.slf4j.LoggerFactory
 trait Scheduler {
 
   /**
-   * The scheduler's concept of the current instant in time (now).
+   * This scheduler's concept of the current instant in time (now).
    */
   def now: Instant
 
   /**
-   * Schedule <code>action</code> to be executed by the scheduler (the scheduler can determine when).
+   * Schedule `action` to be executed by the scheduler (the scheduler can determine when).
    *
    * @return a subscription that can be used to cancel the scheduled action.
    */
   def schedule(action: => Unit): Subscription = scheduleAt(now)(action)
 
   /**
-   * Schedule <code>action</code> to be executed at or soon after <code>at</code>.
+   * Schedule `action` to be executed at or soon after `at`.
    *
    * @return a subscription that can be used to cancel the scheduled action.
    */
   def scheduleAt(at: Instant)(action: => Unit): Subscription = scheduleAfter(new Duration(now, at))(action)
 
   /**
-   * Schedule <code>action</code> to be run after the specified <code>delay</code>.
+   * Schedule `action` to be run after the specified `delay`.
    *
    * @return a subscription that can be used to cancel the scheduled action.
    */
   def scheduleAfter(delay: Duration)(action: => Unit): Subscription = scheduleAt(now plus delay)(action)
 
   /**
-   * Schedule <code>action</code> to be executed by the scheduler (as with <code>schedule</code>). A callback
-   * is passed to <code>action</code> that will reschedule <code>action</code> when invoked.
+   * Schedule `action` to be executed by the scheduler (as with `schedule`). A callback
+   * is passed to `action` that will reschedule `action` when invoked.
    *
    * @return a subscription that can be used to cancel the scheduled action and any rescheduled actions.
    */
@@ -56,8 +56,8 @@ trait Scheduler {
   }
 
   /**
-   * Schedule <code>action</code> to be executed by the scheduler (as with <code>scheduleAfter</code>). A callback
-   * is passed to <code>action</code> that will reschedule <code>action</code> with the specified delay when invoked.
+   * Schedule `action` to be executed by the scheduler (as with `scheduleAfter`). A callback
+   * is passed to `action` that will reschedule `action` with the specified delay when invoked.
    *
    * @return a subscription that can be used to cancel the scheduled action and any rescheduled actions.
    */
@@ -203,7 +203,7 @@ class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler
   }
 
   /**
-   * Run until the schedule is empty or we arrived at the specified <code>instant</code>.
+   * Run until the schedule is empty or we arrived at the specified `instant`.
    */
   def runTo(instant: Instant) {
     def loop() {
@@ -361,8 +361,6 @@ private case class ScheduledAction(time: Instant, sequence: Long, action: () => 
 }
 
 private[reactive] class Schedule {
-  self =>
-
   private var sequence: Long = 0L
   private var schedule = SortedSet[ScheduledAction]()
 
