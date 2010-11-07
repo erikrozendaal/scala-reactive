@@ -240,15 +240,14 @@ trait Observable[+A] {
 
     def resultToStream: Stream[A] = {
       result.take match {
-        case OnCompleted => {
-          subscription.close();
+        case OnCompleted =>
+          subscription.close()
           Stream.Empty
-        }
-        case OnNext(value) => value #:: resultToStream
-        case OnError(error) => {
-          subscription.close();
+        case OnNext(value) =>
+          value #:: resultToStream
+        case OnError(error) =>
+          subscription.close()
           throw error
-        }
       }
     }
 
