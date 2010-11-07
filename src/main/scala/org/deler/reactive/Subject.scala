@@ -45,15 +45,15 @@ class ReplaySubject[A](scheduler: Scheduler = Scheduler.currentThread) extends S
   private var values = immutable.Queue[Notification[A]]()
 
   override def subscribe(observer: Observer[A]): Subscription = CurrentThreadScheduler runImmediate {
-    val result = new FutureSubscription
+    val result = new CompositeSubscription
     val it = values.iterator
-    result.set(scheduler scheduleRecursive {
+    result.add(scheduler scheduleRecursive {
       self =>
         if (it.hasNext) {
           it.next.accept(observer)
           self()
         } else {
-          result.set(super.subscribe(observer))
+          result.add(super.subscribe(observer))
         }
     })
     result

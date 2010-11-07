@@ -44,7 +44,7 @@ trait Scheduler {
   def scheduleRecursive(action: (() => Unit) => Unit): Subscription = {
     val result = new CompositeSubscription
     def self() {
-      val subscription = new FutureSubscription
+      val subscription = new MutableSubscription
       result.add(subscription)
       subscription.set(schedule {
         result.remove(subscription)
@@ -64,7 +64,7 @@ trait Scheduler {
   def scheduleRecursiveAfter(delay: Duration)(action: (Duration => Unit) => Unit): Subscription = {
     val result = new CompositeSubscription
     def self(delay: Duration) {
-      val subscription = new FutureSubscription
+      val subscription = new MutableSubscription
       result.add(subscription)
       subscription.set(scheduleAfter(delay) {
         result.remove(subscription)

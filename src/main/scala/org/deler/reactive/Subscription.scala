@@ -36,34 +36,6 @@ class BooleanSubscription extends Subscription {
 }
 
 /**
- * A subscription that can be updated to hold another subscription. When this subscription is closed the held subscription
- * will also be closed. When this subscription is closed and updated to hold another subscription, the new subscription
- * will be closed as well.
- */
-class FutureSubscription extends Subscription {
-  private var _subscription: Option[Subscription] = None
-  private var _closed = false
-
-  /**
-   * Set the subscription held by this FutureSubscription. If this FutureSubscription is already closed, the
-   * new `subscription` will be closed as well.
-   */
-  def set(subscription: Subscription) {
-    if (_closed) {
-      subscription.close()
-    } else {
-      _subscription = Some(subscription)
-    }
-  }
-
-  def close() {
-    _closed = true
-    _subscription foreach {_.close()}
-    _subscription = None
-  }
-}
-
-/**
  * A subscription that (optionally) contains another subscription. When this MutableSubscription is closed the
  * contained subscription is also closed. Any future replacements will also be closed automatically.
  *

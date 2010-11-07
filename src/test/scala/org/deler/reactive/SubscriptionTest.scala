@@ -20,38 +20,6 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "an open FutureSubscription" should {
-    val subject = new FutureSubscription
-    val delegate = mock[Subscription]
-
-    "not close the delegate subscription initially" in {
-      subject.set(delegate)
-
-      there were noMoreCallsTo(delegate)
-    }
-
-    "close the delegate when closed" in {
-      subject.set(delegate)
-
-      subject.close()
-
-      there was one(delegate).close()
-    }
-  }
-
-  "a closed FutureSubscription" should {
-    val subject = new FutureSubscription
-    val delegate = mock[Subscription]
-
-    "close the delegate when set" in {
-      subject.close()
-
-      subject.set(delegate)
-
-      there was one(delegate).close()
-    }
-  }
-
   "an open MutableSubscription" should {
     val subject = new MutableSubscription
     val delegate1 = mock[Subscription]
