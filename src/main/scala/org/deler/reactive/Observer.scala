@@ -8,15 +8,15 @@ trait Observer[-A] {
   /**
    * Invoked for every value produced by an `Observable`
    */
-  def onNext(value: A) {}
+  def onNext(value: A)
 
   /**
    * Invoked when an error is produced by an `Observable`. No further notifications will happen.
    */
-  def onError(error: Exception) {}
+  def onError(error: Exception)
 
   /**
    * Invoked when an `Observable` completes. No further notifications will happen.
    */
-  def onCompleted() {}
+  def onCompleted()
 }
