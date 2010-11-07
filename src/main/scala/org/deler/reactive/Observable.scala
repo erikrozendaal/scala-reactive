@@ -105,6 +105,17 @@ trait Observable[+A] {
   def withFilter(predicate: A => Boolean) = filter(predicate)
 
   /**
+   * Binds `this` to the parameter of `f` so you can reuse `this` without additional side-effects. Example:
+   *
+   * {{{
+   * makeObservable(x).let(xs => xs ++ xs)
+   * }}}
+   *
+   * will invoke `makeObservable(x)` only once.
+   */
+  def let[B](f: Observable[A] => Observable[B]) = f(this)
+
+  /**
    * A new observable defined by applying a function to all values produced by this observable.
    */
   def map[B](f: A => B): Observable[B] = createWithSubscription {

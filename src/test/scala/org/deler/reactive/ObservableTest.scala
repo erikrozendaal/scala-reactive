@@ -593,4 +593,27 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "Observable.let" should {
+    "pass this to delegate" in {
+      val observable = Observable.empty
+
+      val result = observable.let(x => x)
+
+      (result eq observable) must beTrue
+    }
+
+    "create observable only once to avoid additional side-effects" in {
+      var count = 0
+      def make() = {
+        count += 1
+        Observable("value")
+      }
+
+      val result = make().let(xs => xs ++ xs)
+
+      count must be equalTo 1
+      result.toSeq must be equalTo Seq("value", "value")
+    }
+  }
+
 }
