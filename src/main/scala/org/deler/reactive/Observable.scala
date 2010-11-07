@@ -260,6 +260,19 @@ trait Observable[+A] {
       result
   }
 
+  def subscribeOn(scheduler: Scheduler): Observable[A] = createWithSubscription {
+    observer =>
+      val subscription = new CompositeSubscription
+      subscription.add(scheduler schedule {
+        subscription.add(self.subscribe(observer))
+      })
+      new Subscription {
+        def close() {
+          scheduler schedule {subscription.close()}
+        }
+      }
+  }
+
 }
 
 object Observable {

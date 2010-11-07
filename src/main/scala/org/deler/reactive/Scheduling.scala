@@ -350,15 +350,11 @@ trait LoggingScheduler extends Scheduler {
   }
 }
 
-private class ScheduledAction(val time: Instant, val sequence: Long, val action: () => Unit) extends Ordered[ScheduledAction] {
+private case class ScheduledAction(time: Instant, sequence: Long, action: () => Unit) extends Ordered[ScheduledAction] {
   def compare(that: ScheduledAction) = {
     var rc = this.time.compareTo(that.time)
     if (rc == 0) {
-      if (this.sequence < that.sequence) {
-        rc = -1;
-      } else if (this.sequence > that.sequence) {
-        rc = 1;
-      }
+      rc = this.sequence.compare(that.sequence)
     }
     rc
   }

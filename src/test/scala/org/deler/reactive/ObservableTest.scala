@@ -573,4 +573,24 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "scheduled subscriptions" should {
+    implicit val defaultToTestScheduler = scheduler
+
+    "use specified scheduler" in {
+      val observable = scheduler.createHotObservable(Seq())
+
+      scheduler.run {observable.subscribeOn(scheduler)}
+
+      observable.subscriptions must be equalTo Seq(201 -> 1001)
+    }
+
+    "immediately schedule unsubscribe when closed" in {
+      val observable = scheduler.createHotObservable(Seq())
+
+      scheduler.run(observable.subscribeOn(scheduler), unsubscribeAt = new Instant(150))
+
+      observable.subscriptions must be equalTo Seq(201 -> 201)
+    }
+  }
+
 }
