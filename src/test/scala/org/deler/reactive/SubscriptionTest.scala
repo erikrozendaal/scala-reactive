@@ -55,12 +55,9 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
   }
 
   "an open CompositeSubscription" should {
-    val subject = new CompositeSubscription
     val delegate1 = mock[Subscription]
     val delegate2 = mock[Subscription]
-
-    subject add delegate1
-    subject add delegate2
+    val subject = new CompositeSubscription(delegate1, delegate2)
 
     "not close subscriptions that are added" in {
       there were noMoreCallsTo(delegate1)

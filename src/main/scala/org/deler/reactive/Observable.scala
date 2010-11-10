@@ -62,15 +62,14 @@ trait Observable[+A] {
    */
   def ++[B >: A](that: Observable[B]): Observable[B] = createWithSubscription {
     observer =>
-      val result = new CompositeSubscription
-      val thisSubscription = new MutableSubscription
+      val subscription = new MutableSubscription
+      val result = new MutableSubscription(Some(subscription))
 
-      thisSubscription.set(self.subscribe(
-        onNext = {value => observer.onNext(value)},
-        onError = {error => observer.onError(error)},
-        onCompleted = {() => result.remove(thisSubscription); result.add(that.subscribe(observer))}))
+      subscription.set(self.subscribe(
+        onNext = observer.onNext,
+        onError = observer.onError,
+        onCompleted = {() => subscription.close(); result.set(that.subscribe(observer))}))
 
-      result.add(thisSubscription)
       result
   }
 
@@ -171,9 +170,9 @@ trait Observable[+A] {
    */
   def repeat(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
     observer =>
-      val result = new CompositeSubscription
       val subscription = new MutableSubscription
-      result.add(subscription)
+      val result = new CompositeSubscription(subscription)
+
       result.add(scheduler scheduleRecursive {
         recurs =>
           subscription.set(self.subscribe(
@@ -189,10 +188,10 @@ trait Observable[+A] {
    */
   def repeatN(n: Int)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
     observer =>
-      var count = 0
-      val result = new CompositeSubscription
       val subscription = new MutableSubscription
-      result.add(subscription)
+      val result = new CompositeSubscription(subscription)
+
+      var count = 0
       result.add(scheduler scheduleRecursive {
         recurs =>
           if (count >= n) {

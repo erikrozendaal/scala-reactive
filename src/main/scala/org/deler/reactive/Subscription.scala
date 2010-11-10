@@ -71,11 +71,11 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
  * subscriptions are also closed. A closed CompositeSubscription will also automatically close any new subscriptions
  * that are added.
  */
-class CompositeSubscription extends Subscription {
+class CompositeSubscription(initial: Subscription*) extends Subscription {
   import scala.collection._
 
   private var _closed = false
-  private val _subscriptions = mutable.Set[Subscription]()
+  private val _subscriptions = mutable.Set[Subscription](initial:_*)
 
   /**
    * Adds the `subscription` to this CompositeSubscription or closes the `subscription` if this CompositeSubscription
