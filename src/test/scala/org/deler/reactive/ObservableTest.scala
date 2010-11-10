@@ -584,12 +584,12 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       observable.subscriptions must be equalTo Seq(201 -> 1001)
     }
 
-    "immediately schedule unsubscribe when closed" in {
+    "schedule unsubscribe when subscription is closed closed" in {
       val observable = scheduler.createHotObservable(Seq())
 
       scheduler.run(observable.subscribeOn(scheduler), unsubscribeAt = new Instant(150))
 
-      observable.subscriptions must be equalTo Seq(201 -> 201)
+      observable.subscriptions must be equalTo Seq(201 -> 202)
     }
   }
 

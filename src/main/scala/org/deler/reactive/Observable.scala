@@ -270,17 +270,22 @@ trait Observable[+A] {
       result
   }
 
+  /**
+   * Asynchronously subscribe (and unsubscribe) observers on `scheduler`.
+   */
   def subscribeOn(scheduler: Scheduler): Observable[A] = createWithSubscription {
     observer =>
-      val subscription = new CompositeSubscription
-      subscription.add(scheduler schedule {
-        subscription.add(self.subscribe(observer))
-      })
-      new Subscription {
-        def close() {
-          scheduler schedule {subscription.close()}
-        }
+      val result = new MutableSubscription
+      scheduler schedule {
+        val subscription = self.subscribe(observer)
+
+        result.set(new Subscription {
+          def close() {
+            scheduler schedule {subscription.close()}
+          }
+        });
       }
+      result
   }
 
 }
