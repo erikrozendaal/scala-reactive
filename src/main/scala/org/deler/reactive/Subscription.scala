@@ -28,7 +28,7 @@ object NullSubscription extends Subscription {
  * A subscription that is marked as `closed` when `close` is invoked.
  */
 class BooleanSubscription extends Subscription {
-  private var _closed = false
+  @volatile private var _closed = false
 
   def closed: Boolean = _closed;
 
@@ -47,7 +47,7 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
   private var _subscription: Option[Subscription] = initial
   private var _closed = false
 
-  def set(subscription: Subscription) {
+  def set(subscription: Subscription): Unit = synchronized {
     if (_closed) {
       subscription.close()
     } else {
@@ -56,7 +56,10 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
     }
   }
 
-  def close() {
+  def close(): Unit = synchronized {
+    if (_closed)
+      return
+
     _closed = true
     _subscription foreach {_.close()}
     _subscription = None
@@ -78,7 +81,7 @@ class CompositeSubscription extends Subscription {
    * Adds the `subscription` to this CompositeSubscription or closes the `subscription` if this CompositeSubscription
    * is already closed.
    */
-  def add(subscription: Subscription) {
+  def add(subscription: Subscription) = synchronized {
     if (_closed) {
       subscription.close()
     } else {
@@ -90,7 +93,7 @@ class CompositeSubscription extends Subscription {
    * Removes and closes the `subscription`. Does nothing when the `subscription` is not part of this
    * CompositeSubscription.
    */
-  def remove(subscription: Subscription) {
+  def remove(subscription: Subscription): Unit = synchronized {
     if (_subscriptions remove subscription) {
       subscription.close()
     }
@@ -101,12 +104,15 @@ class CompositeSubscription extends Subscription {
    *
    * @return `true` if there is no subscription in this CompositeSubscription, `false` otherwise.
    */
-  def isEmpty: Boolean = _subscriptions.isEmpty
+  def isEmpty: Boolean = synchronized {_subscriptions.isEmpty}
 
   /**
    * Closes all contained Subscriptions and removes them from this CompositeSubscription.
    */
-  def close() {
+  def close(): Unit = synchronized {
+    if (_closed)
+      return
+
     _closed = true
     _subscriptions foreach {_.close()}
     _subscriptions.clear()
