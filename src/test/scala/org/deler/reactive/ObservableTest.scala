@@ -571,6 +571,15 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
       notifications must be equalTo Seq(202 -> OnNext("rescue"), 203 -> OnCompleted)
     }
+
+    "still subscribe to next source when exception is raised immediately" in {
+      val immediateError = Observable.raise(ex)(Scheduler.immediate)
+      val rescueSource = Observable.value("rescue")
+
+      val notifications = scheduler.run(immediateError.rescue(rescueSource))
+
+      notifications must be equalTo Seq(201 -> OnNext("rescue"), 202 -> OnCompleted)
+    }
   }
 
   "scheduled subscriptions" should {

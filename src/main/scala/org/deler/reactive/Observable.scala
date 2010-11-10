@@ -256,17 +256,18 @@ trait Observable[+A] {
 
   def rescue[B >: A](source: Observable[B]): Observable[B] = createWithSubscription {
     observer =>
-      val result = new CompositeSubscription
-      val selfSubscription = new MutableSubscription
-      result.add(selfSubscription)
-      selfSubscription.set(self.subscribe(
+      val subscription = new MutableSubscription
+      val result = new MutableSubscription(Some(subscription))
+
+      subscription.set(self.subscribe(
         onNext = observer.onNext,
         onCompleted = observer.onCompleted,
         onError = {
           error =>
-            result.remove(selfSubscription)
-            result.add(source.subscribe(observer))
+            subscription.close()
+            result.set(source.subscribe(observer))
         }))
+
       result
   }
 
