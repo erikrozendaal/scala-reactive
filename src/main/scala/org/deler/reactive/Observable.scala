@@ -63,12 +63,15 @@ trait Observable[+A] {
   def ++[B >: A](that: Observable[B]): Observable[B] = createWithSubscription {
     observer =>
       val subscription = new MutableSubscription
-      val result = new MutableSubscription(Some(subscription))
+      val result = new MutableSubscription(subscription)
 
       subscription.set(self.subscribe(
         onNext = observer.onNext,
         onError = observer.onError,
-        onCompleted = {() => subscription.close(); result.set(that.subscribe(observer))}))
+        onCompleted = {
+          () =>
+            result clearAndSet {that.subscribe(observer)}
+        }))
 
       result
   }
@@ -175,10 +178,12 @@ trait Observable[+A] {
 
       result.add(scheduler scheduleRecursive {
         recurs =>
-          subscription.set(self.subscribe(
-            onNext = observer.onNext,
-            onError = observer.onError,
-            onCompleted = recurs))
+          subscription clearAndSet {
+            self.subscribe(
+              onNext = observer.onNext,
+              onError = observer.onError,
+              onCompleted = recurs)
+          }
       })
       result
   }
@@ -198,10 +203,12 @@ trait Observable[+A] {
             observer.onCompleted()
           } else {
             count += 1
-            subscription.set(self.subscribe(
-              onNext = observer.onNext,
-              onError = observer.onError,
-              onCompleted = recurs))
+            subscription clearAndSet {
+              self.subscribe(
+                onNext = observer.onNext,
+                onError = observer.onError,
+                onCompleted = recurs)
+            }
           }
       })
       result
@@ -256,15 +263,14 @@ trait Observable[+A] {
   def rescue[B >: A](source: Observable[B]): Observable[B] = createWithSubscription {
     observer =>
       val subscription = new MutableSubscription
-      val result = new MutableSubscription(Some(subscription))
+      val result = new MutableSubscription(subscription)
 
       subscription.set(self.subscribe(
         onNext = observer.onNext,
         onCompleted = observer.onCompleted,
         onError = {
           error =>
-            subscription.close()
-            result.set(source.subscribe(observer))
+            result clearAndSet {source.subscribe(observer)}
         }))
 
       result

@@ -33,6 +33,37 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
       there was one(delegate1).close()
     }
 
+    "close the current subscription when cleared, but not close a new subscription" in {
+      subject.set(delegate1)
+
+      subject.clear()
+      subject.set(delegate2)
+
+      there was one(delegate1).close()
+      there were noMoreCallsTo(delegate2)
+    }
+
+    "close the current subscription before invoking the action to set the new subscription" in {
+      subject.set(delegate1)
+
+      subject clearAndSet {
+        there was one(delegate1).close()
+
+        delegate2
+      }
+
+      there were noMoreCallsTo(delegate2)
+    }
+
+    "close the returned subscription when the action closes this subscription" in {
+      subject clearAndSet {
+        subject.close()
+        delegate1
+      }
+
+      there was one(delegate1).close()
+    }
+
     "close the previous subscription when it is replaced" in {
       subject.set(delegate1)
       subject.set(delegate2)
@@ -51,6 +82,17 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
       subject.set(delegate)
 
       there was one(delegate).close()
+    }
+
+    "not invoke the action when clear-and-set is used" in {
+      var invoked = false
+
+      subject clearAndSet {
+        invoked = true
+        delegate
+      }
+
+      invoked must beFalse
     }
   }
 

@@ -47,6 +47,21 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
   private var _subscription: Option[Subscription] = initial
   private var _closed = false
 
+  def this(subscription: Subscription) = this (Some(subscription))
+
+  def clear(): Unit = synchronized {
+    _subscription foreach {_.close()}
+    _subscription = None
+  }
+
+  def clearAndSet(delegate: => Subscription): Unit = synchronized {
+    if (_closed)
+      return
+
+    clear()
+    set(delegate) // TODO: unlock 'this' while invoking delegate?
+  }
+
   def set(subscription: Subscription): Unit = synchronized {
     if (_closed) {
       subscription.close()
@@ -61,8 +76,7 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
       return
 
     _closed = true
-    _subscription foreach {_.close()}
-    _subscription = None
+    clear()
   }
 }
 
@@ -75,7 +89,7 @@ class CompositeSubscription(initial: Subscription*) extends Subscription {
   import scala.collection._
 
   private var _closed = false
-  private val _subscriptions = mutable.Set[Subscription](initial:_*)
+  private val _subscriptions = mutable.Set[Subscription](initial: _*)
 
   /**
    * Adds the `subscription` to this CompositeSubscription or closes the `subscription` if this CompositeSubscription
