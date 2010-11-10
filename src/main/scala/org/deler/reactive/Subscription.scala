@@ -83,8 +83,9 @@ class CompositeSubscription extends Subscription {
   }
 
   def remove(subscription: Subscription) {
-    _subscriptions remove subscription
-    subscription.close()
+    if (_subscriptions remove subscription) {
+      subscription.close()
+    }
   }
 
   def isEmpty: Boolean = _subscriptions.isEmpty
