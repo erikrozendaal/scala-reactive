@@ -271,7 +271,8 @@ trait Observable[+A] {
   }
 
   /**
-   * Asynchronously subscribe (and unsubscribe) observers on `scheduler`.
+   * Asynchronously subscribe (and unsubscribe) observers on `scheduler`. The subscription is always completed
+   * before the observer is unsubscribed.
    */
   def subscribeOn(scheduler: Scheduler): Observable[A] = createWithSubscription {
     observer =>

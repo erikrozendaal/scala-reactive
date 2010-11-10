@@ -1,11 +1,13 @@
 package org.deler.reactive
 
 /**
- * Represents a subscription that can be cancelled by using the `close</close> method. Closing a subscription
+ * Represents a subscription that can be cancelled by using the `close` method. Closing a subscription
  * allows the [[org.deler.reactive.Observable]] or [[org.deler.reactive.Scheduler]] to clean up any resources and
  * cancel future notifications or scheduled actions.
  *
  * Subscriptions must be idempotent (so `close` can be called multiple times without ill effects).
+ *
+ * Subscriptions must be thread-safe.
  */
 trait Subscription {
 
@@ -23,7 +25,7 @@ object NullSubscription extends Subscription {
 }
 
 /**
- * A subscription that is marked as `closed</close> when `close` is invoked.
+ * A subscription that is marked as `closed` when `close` is invoked.
  */
 class BooleanSubscription extends Subscription {
   private var _closed = false
