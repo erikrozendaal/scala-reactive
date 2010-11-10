@@ -74,6 +74,10 @@ class CompositeSubscription extends Subscription {
   private var _closed = false
   private val _subscriptions = mutable.Set[Subscription]()
 
+  /**
+   * Adds the `subscription` to this CompositeSubscription or closes the `subscription` if this CompositeSubscription
+   * is already closed.
+   */
   def add(subscription: Subscription) {
     if (_closed) {
       subscription.close()
@@ -82,14 +86,26 @@ class CompositeSubscription extends Subscription {
     }
   }
 
+  /**
+   * Removes and closes the `subscription`. Does nothing when the `subscription` is not part of this
+   * CompositeSubscription.
+   */
   def remove(subscription: Subscription) {
     if (_subscriptions remove subscription) {
       subscription.close()
     }
   }
 
+  /**
+   * Tests if this CompositeSubscription is empty.
+   *
+   * @return `true` if there is no subscription in this CompositeSubscription, `false` otherwise.
+   */
   def isEmpty: Boolean = _subscriptions.isEmpty
 
+  /**
+   * Closes all contained Subscriptions and removes them from this CompositeSubscription.
+   */
   def close() {
     _closed = true
     _subscriptions foreach {_.close()}
