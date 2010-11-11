@@ -220,8 +220,7 @@ trait Observable[+A] {
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>
       var count: Int = 0
-      val result = new MutableSubscription
-      result.set(self.subscribe(
+      self.subscribe(
         onNext = {
           value =>
             if (count < n) {
@@ -233,8 +232,7 @@ trait Observable[+A] {
             }
         },
         onError = observer.onError,
-        onCompleted = observer.onCompleted))
-      result
+        onCompleted = observer.onCompleted)
   }
 
   /**
