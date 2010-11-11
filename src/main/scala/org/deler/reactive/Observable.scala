@@ -160,12 +160,11 @@ trait Observable[+A] {
   /**
    * A new observable that executes `action` for its side-effects for each value produced by this observable.
    */
-  def perform(action: A => Unit): Observable[A] = createWithSubscription {
-    observer =>
-      self.subscribe(
-        onNext = {value => action(value); observer.onNext(value)},
-        onError = observer.onError,
-        onCompleted = observer.onCompleted)
+  def perform(action: A => Unit): Observable[A] = {
+    for (value <- this) yield {
+      action(value)
+      value
+    }
   }
 
   /**
@@ -436,7 +435,7 @@ object Observable {
  * Observer that passes on all notifications to a `target` observer, taking care that no more notifications
  * are send after either `onError` or `onCompleted` occurred.
  *
- * The subscription to the underlying source is also closed after onCompleted or onError is received.
+ * The subscription to the underlying source is also closed before onCompleted or onError is received.
  */
 private class RelayObserver[-A](target: Observer[A], subscription: Subscription) extends Observer[A] {
   private var completed = false
@@ -444,15 +443,15 @@ private class RelayObserver[-A](target: Observer[A], subscription: Subscription)
   override def onCompleted() {
     if (completed) return
     completed = true
-    target.onCompleted()
     subscription.close()
+    target.onCompleted()
   }
 
   override def onError(error: Exception) {
     if (completed) return
     completed = true
-    target.onError(error);
     subscription.close()
+    target.onError(error);
   }
 
   override def onNext(value: A) {

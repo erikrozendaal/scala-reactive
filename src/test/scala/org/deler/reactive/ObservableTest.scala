@@ -264,6 +264,33 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         206 -> OnCompleted)
     }
 
+    "perform side effects while yielding same values" in {
+      val observable = Observable("a", "b")
+      var count = 0
+      val values = mutable.ListBuffer[String]()
+
+      val notifications = scheduler run {
+        observable perform { v => values += v; count += 1 }
+      }
+
+      count must be equalTo 2
+      values.toSeq must be equalTo Seq("a", "b")
+      notifications must be equalTo Seq(
+        201 -> OnNext("a"),
+        202 -> OnNext("b"),
+        203 -> OnCompleted)
+    }
+
+    "pass error notifactions to observers of perform" in {
+      var invoked = false
+
+      val notifications = scheduler run {
+        Observable.raise(ex).perform(_ => invoked = true)
+      }
+
+      invoked must beFalse
+      notifications must be equalTo Seq(201 -> OnError(ex))
+    }
   }
 
 
