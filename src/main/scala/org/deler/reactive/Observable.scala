@@ -79,7 +79,7 @@ trait Observable[+A] {
   /**
    * flatMap
    */
-  def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(self.map(f)).flatten
+  def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(self.map(f)).merge
 
   /**
    * A new observable only containing the values from this observable for which the predicate is satisfied.
@@ -378,7 +378,7 @@ object Observable {
   implicit def iterableToObservableWrapper[A](iterable: Iterable[A]): IterableToObservableWrapper[A] = new IterableToObservableWrapper(iterable)
 
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
-    def flatten: Observable[A] = createWithSubscription {
+    def merge: Observable[A] = createWithSubscription {
       observer =>
         val result = new CompositeSubscription
         val generatorSubscription = new MutableSubscription

@@ -235,10 +235,10 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         203 -> OnNext("bc"))
     }
 
-    "stop flatten on unsubscribe" in {
+    "stop merge on unsubscribe" in {
       val observables = Observable(Observable("a", "b"), Observable("c", "d"))
 
-      val notifications = scheduler.run({observables.flatten}, unsubscribeAt = new Instant(204))
+      val notifications = scheduler.run({observables.merge}, unsubscribeAt = new Instant(204))
 
       notifications must be equalTo Seq(
         202 -> OnNext("a"),
