@@ -69,10 +69,7 @@ trait Observable[+A] {
       subscription.set(self.subscribe(
         onNext = observer.onNext,
         onError = observer.onError,
-        onCompleted = {
-          () =>
-            result clearAndSet {that.subscribe(observer)}
-        }))
+        onCompleted = () => result clearAndSet {that.subscribe(observer)}))
 
       result
   }
@@ -240,10 +237,10 @@ trait Observable[+A] {
    */
   def toSeq: Seq[A] = {
     val result = new LinkedBlockingQueue[Notification[A]]
-    val subscription = self.materialize.subscribe(value => result.put(value))
+    val subscription = self.materialize.subscribe(result.put(_))
 
     def resultToStream: Stream[A] = {
-      result.take match {
+      result.take() match {
         case OnCompleted =>
           subscription.close()
           Stream.Empty
@@ -266,10 +263,7 @@ trait Observable[+A] {
       subscription.set(self.subscribe(
         onNext = observer.onNext,
         onCompleted = observer.onCompleted,
-        onError = {
-          error =>
-            result clearAndSet {source.subscribe(observer)}
-        }))
+        onError = error => result clearAndSet {source.subscribe(observer)}))
 
       result
   }
@@ -310,8 +304,7 @@ trait Observable[+A] {
       def startConsumer() {
         consumerSubscription.clearAndSet(scheduler scheduleRecursive {
           reschedule =>
-            val notification = queue.remove()
-            notification match {
+            queue.remove() match {
               case OnCompleted =>
                 result.close()
                 observer.onCompleted()
@@ -388,7 +381,7 @@ object Observable {
     Seq(value).toObservable(scheduler)
   }
 
-  def interval(interval: Duration)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[Int] = createWithSubscription {
+  def interval(interval: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithSubscription {
     observer =>
       var counter = 0
       scheduler.scheduleRecursiveAfter(interval) {
@@ -439,8 +432,8 @@ object Observable {
                 }
 
                 override def onError(error: Exception) {
-                  observer.onError(error)
                   result.close()
+                  observer.onError(error)
                 }
 
                 override def onNext(value: A) {
@@ -448,7 +441,11 @@ object Observable {
                 }
               }))
           },
-          onError = {error => observer.onError(error); result.close()},
+          onError = {
+            error =>
+              observer.onError(error)
+              result.close()
+          },
           onCompleted = {
             () =>
               result.remove(generatorSubscription)
@@ -466,7 +463,7 @@ object Observable {
     def dematerialize: Observable[A] = createWithSubscription {
       observer =>
         source.subscribe(
-          onNext = {notification => notification.accept(observer)},
+          onNext = _.accept(observer),
           onError = observer.onError,
           onCompleted = observer.onCompleted)
     }
