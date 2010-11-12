@@ -255,6 +255,9 @@ trait Observable[+A] {
     resultToStream
   }
 
+  /**
+   * Switches to `source` when `this` terminates with an error.
+   */
   def rescue[B >: A](source: Observable[B]): Observable[B] = createWithSubscription {
     observer =>
       val subscription = new MutableSubscription
