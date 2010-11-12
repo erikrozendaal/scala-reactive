@@ -270,7 +270,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val values = mutable.ListBuffer[String]()
 
       val notifications = scheduler run {
-        observable perform { v => values += v; count += 1 }
+        observable perform {v => values += v; count += 1}
       }
 
       count must be equalTo 2
@@ -626,6 +626,32 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       scheduler.run(observable.subscribeOn(scheduler), unsubscribeAt = new Instant(150))
 
       observable.subscriptions must be equalTo Seq(201 -> 202)
+    }
+  }
+
+  "scheduled observers" should {
+    "use specified scheduler for each notification" in {
+      val observable = Observable(1, 2, 3)(Scheduler.immediate)
+
+      val notifications = scheduler.run {observable.observeOn(scheduler)}
+
+      notifications must be equalTo Seq(201 -> OnNext(1), 202 -> OnNext(2), 203 -> OnNext(3), 204 -> OnCompleted)
+    }
+
+    "work with immediate scheduler" in {
+      var invoked = false
+
+      Observable.value("value").observeOn(Scheduler.immediate).subscribe(_ => invoked = true)
+
+      invoked must beTrue
+    }
+
+    "work with immediate scheduler when notifications are received through another scheduler" in {
+      var invoked = false
+
+      Observable.value("value")(Scheduler.currentThread).observeOn(Scheduler.immediate).subscribe(_ => invoked = true)
+
+      invoked must beTrue
     }
   }
 

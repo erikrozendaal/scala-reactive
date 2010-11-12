@@ -4,6 +4,7 @@ import scala.collection._
 import scala.util.control.Exception._
 import org.joda.time.Duration
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * An observable can be subscribed to by an [[org.deler.reactive.Observer]]. Observables produce zero or more values
@@ -287,11 +288,55 @@ trait Observable[+A] {
           def close() {
             scheduler schedule {subscription.close()}
           }
-        });
+        })
       }
       result
   }
 
+  /**
+   * Asynchronously notify observers on the specified `scheduler`. Notifications are still
+   * delivered one at a time, in-order. An internal, unbounded queue is used to ensure the producer
+   * is not limited by a slow consumer.
+   */
+  def observeOn(scheduler: Scheduler): Observable[A] = createWithSubscription {
+    observer =>
+      val queue = new LinkedBlockingQueue[Notification[A]]()
+      val size = new AtomicInteger(0)
+
+      val producerSubscription = new MutableSubscription
+      val consumerSubscription = new MutableSubscription
+      val result = new CompositeSubscription(producerSubscription, consumerSubscription)
+
+      def startConsumer() {
+        consumerSubscription.clearAndSet(scheduler scheduleRecursive {
+          reschedule =>
+            val notification = queue.remove()
+            notification match {
+              case OnCompleted =>
+                result.close()
+                observer.onCompleted()
+              case OnError(error) =>
+                result.close()
+                observer.onError(error)
+              case OnNext(value) =>
+                observer.onNext(value)
+                if (size.decrementAndGet() > 0) {
+                  reschedule()
+                }
+            }
+        })
+      }
+
+      producerSubscription.set(this.materialize.subscribe {
+        notification =>
+          queue.put(notification)
+          if (size.getAndIncrement() == 0) {
+            startConsumer()
+          }
+      })
+
+      result
+  }
 }
 
 object Observable {
