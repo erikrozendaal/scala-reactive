@@ -330,6 +330,11 @@ trait Observable[+A] {
 
       result
   }
+
+  def synchronize: Observable[A] = createWithSubscription {
+    observer =>
+      this.subscribe(new SynchronizedObserver(observer))
+  }
 }
 
 object Observable {
@@ -415,44 +420,51 @@ object Observable {
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
     def merge: Observable[A] = createWithSubscription {
       observer =>
-        val result = new CompositeSubscription
+        val target = new SynchronizedObserver(observer)
         val generatorSubscription = new MutableSubscription
-        result.add(generatorSubscription)
+
+        val activeCount = new AtomicInteger(1)
+        val result = new CompositeSubscription(generatorSubscription)
+
         generatorSubscription.set(source.subscribe(
+          onError = {
+            error =>
+              result.close()
+              target.onError(error)
+          },
+          onCompleted = {
+            () =>
+              result.remove(generatorSubscription)
+              if (activeCount.decrementAndGet() == 0) {
+                target.onCompleted()
+              }
+          },
           onNext = {
             value =>
+              activeCount.incrementAndGet()
+
               val holder = new MutableSubscription
               result.add(holder)
+
               holder.set(value.subscribe(new Observer[A] {
                 override def onCompleted() {
                   result.remove(holder)
-                  if (result.isEmpty) {
-                    observer.onCompleted()
+                  if (activeCount.decrementAndGet() == 0) {
+                    target.onCompleted()
                   }
                 }
 
                 override def onError(error: Exception) {
                   result.close()
-                  observer.onError(error)
+                  target.onError(error)
                 }
 
                 override def onNext(value: A) {
-                  observer.onNext(value)
+                  target.onNext(value)
                 }
               }))
-          },
-          onError = {
-            error =>
-              observer.onError(error)
-              result.close()
-          },
-          onCompleted = {
-            () =>
-              result.remove(generatorSubscription)
-              if (result.isEmpty) {
-                observer.onCompleted()
-              }
           }))
+
         result
     }
   }
@@ -471,6 +483,20 @@ object Observable {
 
   implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
 
+}
+
+private class SynchronizedObserver[A](target: Observer[A]) extends Observer[A] {
+  override def onNext(value: A) = synchronized {
+    target.onNext(value)
+  }
+
+  override def onError(error: Exception) = synchronized {
+    target.onError(error)
+  }
+
+  override def onCompleted() = synchronized {
+    target.onCompleted()
+  }
 }
 
 /**
