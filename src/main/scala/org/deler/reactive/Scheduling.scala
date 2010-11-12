@@ -3,6 +3,7 @@ package org.deler.reactive
 import org.joda.time._
 import scala.collection._
 import org.slf4j.LoggerFactory
+import java.util.concurrent.{ThreadFactory, Executors, ScheduledThreadPoolExecutor, TimeUnit}
 
 /**
  * A scheduler is used to schedule work. Various standard schedulers are provided.
@@ -79,6 +80,19 @@ trait Scheduler {
 object Scheduler {
   val immediate: Scheduler = new ImmediateScheduler
   val currentThread: Scheduler = new CurrentThreadScheduler
+
+  val threadPool: Scheduler = {
+    val executor = new ScheduledThreadPoolExecutor(
+      Runtime.getRuntime.availableProcessors,
+      new ThreadFactory {
+        def newThread(r: Runnable): Thread = {
+          val t = Executors.defaultThreadFactory.newThread(r)
+          t.setDaemon(true)
+          t
+        }
+      })
+    new ThreadPoolScheduler(executor)
+  }
 }
 
 /**
@@ -160,6 +174,22 @@ class CurrentThreadScheduler extends Scheduler {
       schedule =>
         schedule.enqueue(at, () => action)
     }
+  }
+}
+
+/**
+ * Schedules tasks using the provided `executor`.
+ */
+class ThreadPoolScheduler(executor: ScheduledThreadPoolExecutor) extends Scheduler {
+  def now = new Instant
+
+  override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
+    val runnable = new Runnable {def run() {action}}
+    val future = executor.schedule(runnable, delay.getMillis, TimeUnit.MILLISECONDS)
+    new ActionSubscription(() => {
+      future.cancel(false)
+      executor.remove(runnable)
+    })
   }
 }
 

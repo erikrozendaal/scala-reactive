@@ -5,6 +5,7 @@ import org.junit.runner.RunWith
 import org.specs._
 import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import scala.collection._
+import java.util.concurrent.CountDownLatch
 
 @RunWith(classOf[JUnitSuiteRunner])
 class SchedulingTest extends Specification with JUnit {
@@ -273,6 +274,48 @@ class SchedulingTest extends Specification with JUnit {
 
       immediateCompleted must beTrue
       currentThreadCompleted must beTrue
+    }
+  }
+
+  "thread pool scheduler" should {
+    val subject = Scheduler.threadPool
+
+    "run actions on a separate thread" in {
+      val taskStarted = new CountDownLatch(1)
+      val taskWait = new CountDownLatch(1)
+      val taskCompleted = new CountDownLatch(1)
+
+      var taskRan = false
+
+      subject schedule {
+        taskStarted.countDown()
+
+        taskWait.await()
+        taskRan = true
+
+        taskCompleted.countDown()
+      }
+
+      taskStarted.await()
+      taskRan must beFalse
+
+      taskWait.countDown()
+
+      taskCompleted.await()
+      taskRan must beTrue
+    }
+
+    "cancel delayed actions that have not started yet" in {
+      @volatile var executed = false
+
+      val subscription = subject.scheduleAfter(new Duration(50)) {
+        executed = true
+      }
+
+      subscription.close()
+
+      Thread.sleep(100)
+      executed must beFalse
     }
   }
 

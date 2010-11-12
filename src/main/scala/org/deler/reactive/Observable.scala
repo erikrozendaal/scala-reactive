@@ -363,7 +363,7 @@ object Observable {
   def create[A](delegate: Observer[A] => () => Unit): Observable[A] = createWithSubscription {
     observer =>
       val unsubscribe = delegate(observer)
-      new Subscription {def close() = unsubscribe()}
+      new ActionSubscription(unsubscribe)
   }
 
   def createWithSubscription[A](delegate: Observer[A] => Subscription): Observable[A] = new Observable[A] {

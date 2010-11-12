@@ -1,5 +1,7 @@
 package org.deler.reactive
 
+import java.util.concurrent.atomic.AtomicBoolean
+
 /**
  * Represents a subscription that can be cancelled by using the `close` method. Closing a subscription
  * allows the [[org.deler.reactive.Observable]] or [[org.deler.reactive.Scheduler]] to clean up any resources and
@@ -34,6 +36,19 @@ class BooleanSubscription extends Subscription {
 
   def close() {
     _closed = true
+  }
+}
+
+/**
+ * A subscription that executes `action` when closed for the first time.
+ */
+class ActionSubscription(action: () => Unit) extends Subscription {
+  private val _closed = new AtomicBoolean(false)
+
+  def close() {
+    if (_closed.compareAndSet(false, true)) {
+      action()
+    }
   }
 }
 

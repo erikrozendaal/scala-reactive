@@ -20,6 +20,20 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
   }
 
+  "ActionSubscription" should {
+    "execute action once on close" in {
+      var count = 0
+
+      val subject = new ActionSubscription(() => count += 1)
+
+      subject.close()
+      count must be equalTo 1
+
+      subject.close()
+      count must be equalTo 1
+    }
+  }
+
   "an open MutableSubscription" should {
     val subject = new MutableSubscription
     val delegate1 = mock[Subscription]
