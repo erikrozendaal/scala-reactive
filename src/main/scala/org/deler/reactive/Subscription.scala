@@ -53,6 +53,12 @@ class ActionSubscription(action: () => Unit) extends Subscription {
 }
 
 /**
+ * Schedules the closing of `target` on the specified `scheduler` when closed.
+ */
+class ScheduledSubscription(target: Subscription, scheduler: Scheduler)
+        extends ActionSubscription(() => scheduler schedule target.close())
+
+/**
  * A subscription that (optionally) contains another subscription. When this MutableSubscription is closed the
  * contained subscription is also closed. Any future replacements will also be closed automatically.
  *

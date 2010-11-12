@@ -281,11 +281,7 @@ trait Observable[+A] {
       scheduler schedule {
         val subscription = self.subscribe(observer)
 
-        result.set(new Subscription {
-          def close() {
-            scheduler schedule {subscription.close()}
-          }
-        })
+        result.set(new ScheduledSubscription(subscription, scheduler))
       }
       result
   }
