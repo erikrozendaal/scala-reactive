@@ -77,7 +77,7 @@ trait Observable[+A] {
   }
 
   /**
-   * flatMap
+   * A new $coll by applying a function to all elements of this $coll and merging the results.
    */
   def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(this.map(f)).merge
 

@@ -6,7 +6,7 @@ import org.specs.mock.Mockito
 import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import scala.collection._
 import org.joda.time.{Duration, Instant}
-import org.scalacheck.{Gen, Arbitrary, Prop}
+import org.scalacheck.{Arbitrary, Prop}
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableTest extends Specification with JUnit with Mockito with ScalaCheck {
