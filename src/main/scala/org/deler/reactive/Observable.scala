@@ -367,7 +367,7 @@ object Observable {
     override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate {
       val subscription = new MutableSubscription
       subscription.set(delegate(new DelegateObserver[A](observer) with ConformingObserver[A] {
-        def close() = subscription.close()
+        protected def close() = subscription.close()
       }))
       subscription
     }

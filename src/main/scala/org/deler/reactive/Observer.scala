@@ -13,12 +13,15 @@ trait Observer[-A] {
   /**
    * Invoked when an error is produced by an `Observable`. No further notifications will happen.
    */
-  def onError(error: Exception)
+  def onError(error: Exception) {
+    throw error
+  }
 
   /**
    * Invoked when an `Observable` completes. No further notifications will happen.
    */
-  def onCompleted()
+  def onCompleted() {
+  }
 }
 
 /**
@@ -27,9 +30,9 @@ trait Observer[-A] {
 class DelegateObserver[-A](delegate: Observer[A]) extends Observer[A] {
   def onNext(value: A) = delegate.onNext(value)
 
-  def onError(error: Exception) = delegate.onError(error)
+  override def onError(error: Exception) = delegate.onError(error)
 
-  def onCompleted() = delegate.onCompleted()
+  override def onCompleted() = delegate.onCompleted()
 }
 
 /**
@@ -64,7 +67,7 @@ trait ConformingObserver[-A] extends Observer[A] {
    * Invoked when the first `onComplete` or `onError` notification is received. Used to close the subscription to the
    * underlying source.
    */
-  def close()
+  protected def close()
 
   abstract override def onCompleted() {
     if (completed) return
