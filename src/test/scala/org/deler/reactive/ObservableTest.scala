@@ -53,7 +53,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
   "Observable.create" should {
     "invoke delegate on subscription with the observer as argument" in {
       var delegateCalled = false
-      val observable: Observable[String] = Observable.create {
+      val observable = Observable.create[String] {
         observer =>
           delegateCalled = true
           observer.onNext("delegate")
@@ -68,7 +68,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
     "invoke delegate's result when subscription is closed" in {
       var actionCalled = false
-      val observable = Observable.create {observer: Observer[String] => () => actionCalled = true}
+      val observable = Observable.create[String] {observer => () => actionCalled = true}
       val subscription = observable.subscribe(observer)
 
       subscription.close()
