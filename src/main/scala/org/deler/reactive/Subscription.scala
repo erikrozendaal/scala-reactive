@@ -66,23 +66,37 @@ class ScheduledSubscription(target: Subscription, scheduler: Scheduler)
  */
 class MutableSubscription(initial: Option[Subscription] = None) extends Subscription {
   private var _subscription: Option[Subscription] = initial
-  private var _closed = false
+  @volatile private var _closed = false
 
   def this(subscription: Subscription) = this (Some(subscription))
 
+  /**
+   * Closes the contained subscription (if any) without closing this.
+   */
   def clear(): Unit = synchronized {
     _subscription foreach {_.close()}
     _subscription = None
   }
 
-  def clearAndSet(delegate: => Subscription): Unit = synchronized {
+  /**
+   * First `clear`s this subscription before invoking `delegate` to set a new subscription. When this subscription
+   * is already closed the `delegate` is not invoked!
+   *
+   * @note not synchronized to avoid running `delegate` with this subscription locked!
+   */
+  def clearAndSet(delegate: => Subscription) {
     if (_closed)
       return
 
     clear()
-    set(delegate) // TODO: unlock 'this' while invoking delegate?
+    val subscription = delegate
+    set(subscription)
   }
 
+  /**
+   * Closes the contained subscription (if any) and replaces it with `subscription`. Immediately closes `subscription`
+   * if this subscription is already closed.
+   */
   def set(subscription: Subscription): Unit = synchronized {
     if (_closed) {
       subscription.close()
