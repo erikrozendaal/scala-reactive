@@ -1,11 +1,11 @@
 package org.deler.reactive
 
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
 import org.joda.time.Duration
 import scala.collection._
 import scala.concurrent.SyncVar
 import scala.util.control.Exception._
+import java.util.concurrent.{TimeoutException, LinkedBlockingQueue}
 
 /**
  * An observable can be subscribed to by an [[org.deler.reactive.Observer]]. Observables produce zero or more values
@@ -54,14 +54,6 @@ trait Observable[+A] {
   }
 
   /**
-   * A new observable defined by applying a partial function to all values produced by this observable on which the
-   * function is defined.
-   */
-  def collect[B](pf: PartialFunction[A, B]): Observable[B] = {
-    for (value <- this if pf.isDefinedAt(value)) yield pf(value)
-  }
-
-  /**
    * Appends `that` observable to this observable.
    */
   def ++[B >: A](that: Observable[B]): Observable[B] = createWithSubscription {
@@ -74,6 +66,47 @@ trait Observable[+A] {
       }))
 
       result
+  }
+
+  /**
+   * Returns the first $coll to produce a notification.
+   */
+  def amb[B >: A](other: Observable[B]): Observable[B] = createWithSubscription {
+    observer =>
+      val Unknown = 0
+      val Left = 1
+      val Right = 2
+
+      val leftOrRight = new AtomicInteger(Unknown)
+
+      val leftSubscription = new MutableSubscription
+      val rightSubscription = new MutableSubscription
+      val result = new CompositeSubscription(leftSubscription, rightSubscription)
+
+      leftSubscription.set(this.materialize subscribe {
+        notification =>
+          if (leftOrRight.compareAndSet(Unknown, Left))
+            result -= rightSubscription
+          if (leftOrRight.get == Left)
+            notification.accept(observer)
+      })
+      rightSubscription.set(other.materialize subscribe {
+        notification =>
+          if (leftOrRight.compareAndSet(Unknown, Right))
+            result -= leftSubscription
+          if (leftOrRight.get == Right)
+            notification.accept(observer)
+      })
+
+      result
+  }
+
+  /**
+   * A new observable defined by applying a partial function to all values produced by this observable on which the
+   * function is defined.
+   */
+  def collect[B](pf: PartialFunction[A, B]): Observable[B] = {
+    for (value <- this if pf.isDefinedAt(value)) yield pf(value)
   }
 
   /**
@@ -265,6 +298,48 @@ trait Observable[+A] {
       }))
 
       result
+  }
+
+  /**
+   * Returns an $coll that produces values from this $coll until `dueTime`, when it raises a
+   * [[java.util.concurrent.TimeoutException]].
+   *
+   * Completes when either this $coll completes before the timeout or the timeout occurs.
+   *
+   * Uses the `Scheduler.threadPool` scheduler.
+   */
+  def timeout(dueTime: Duration): Observable[A] = timeout(dueTime, Scheduler.threadPool)
+
+  /**
+   * Returns an $coll that produces values from this $coll until `dueTime`, when it raises a
+   * [[java.util.concurrent.TimeoutException]].
+   *
+   * Completes when either this $coll completes before the timeout or the timeout occurs.
+   */
+  def timeout(dueTime: Duration, scheduler: Scheduler): Observable[A] = {
+    timeout(dueTime, Observable.raise(new TimeoutException), scheduler)
+  }
+
+  /**
+   * Returns an $coll that produces values from this $coll until `dueTime`, when it switches to the `other` $coll.
+   *
+   * Completes when either this $coll completes before the timeout or the `other` $coll completes after the timeout.
+   *
+   * Uses the `Scheduler.threadPool` scheduler.
+   */
+  def timeout[B >: A](dueTime: Duration, other: Observable[B]): Observable[B] = timeout(dueTime, other, Scheduler.threadPool)
+
+  /**
+   * Returns an $coll that produces values from this $coll until `dueTime`, when it switches to the `other` $coll.
+   *
+   * Completes when either this $coll completes before the timeout or the `other` $coll completes after the timeout.
+   */
+  def timeout[B >: A](dueTime: Duration, other: Observable[B], scheduler: Scheduler): Observable[B] = {
+    val source = this.map(Some(_)) amb Observable.timer(dueTime)(scheduler).map(_ => None)
+    source flatMap {
+      case Some(value) => Observable.value(value)
+      case None => other
+    }
   }
 
   /**

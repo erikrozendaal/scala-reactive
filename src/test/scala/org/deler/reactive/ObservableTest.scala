@@ -7,6 +7,7 @@ import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import scala.collection._
 import org.joda.time.{Duration, Instant}
 import org.scalacheck.{Arbitrary, Prop}
+import java.util.concurrent.TimeoutException
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableTest extends Specification with JUnit with Mockito with ScalaCheck {
@@ -23,6 +24,30 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
    */
   implicit def arbitraryObservable[T](implicit a: Arbitrary[List[T]]): Arbitrary[Observable[T]] = Arbitrary {
     for (s <- Arbitrary.arbitrary[List[T]]) yield s.toObservable
+  }
+
+  "Observable.amb" should {
+    "return the left observable when it produces a notification before the right observable" in {
+      val left = scheduler.createHotObservable(Seq(250 -> OnCompleted))
+      val right = scheduler.createHotObservable(Seq(300 -> OnCompleted))
+
+      val notifications = scheduler.run(left amb right)
+
+      notifications must be equalTo Seq(250 -> OnCompleted)
+      left.subscriptions must be equalTo Seq(200 -> 250)
+      right.subscriptions must be equalTo Seq(200 -> 250)
+    }
+
+    "return the right observable when it produces a notification before the left observable" in {
+      val left = scheduler.createHotObservable(Seq(350 -> OnCompleted))
+      val right = scheduler.createHotObservable(Seq(300 -> OnCompleted))
+
+      val notifications = scheduler.run(left amb right)
+
+      notifications must be equalTo Seq(300 -> OnCompleted)
+      left.subscriptions must be equalTo Seq(200 -> 300)
+      right.subscriptions must be equalTo Seq(200 -> 300)
+    }
   }
 
   "Observable.create" should {
@@ -174,6 +199,56 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         unsubscribeAt = new Instant(400))
 
       notifications must beEmpty
+    }
+  }
+
+  "Observable.timeout" should {
+    "return the source observable when it produces a value before the timeout" in {
+      val source = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        500 -> OnNext("second"),
+        600 -> OnCompleted))
+      val other = scheduler.createHotObservable(Seq(
+        450 -> OnNext("after timeout"),
+        800 -> OnCompleted))
+
+      val notifications = scheduler.run(source.timeout(new Duration(200), other, scheduler))
+
+      notifications must be equalTo Seq(
+        300 -> OnNext("first"),
+        500 -> OnNext("second"),
+        600 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 600)
+      other.subscriptions must beEmpty
+    }
+
+    "return the other observable when the source observable does not produce a value before the timeout" in {
+      val source = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        500 -> OnNext("second"),
+        600 -> OnCompleted))
+      val other = scheduler.createHotObservable(Seq(
+        450 -> OnNext("after timeout"),
+        800 -> OnCompleted))
+
+      val notifications = scheduler.run(source.timeout(new Duration(50), other, scheduler))
+
+      notifications must be equalTo Seq(
+        450 -> OnNext("after timeout"),
+        800 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 250)
+      other.subscriptions must be equalTo Seq(250 -> 800)
+    }
+
+    "raise a TimeoutException when no other observable is provided" in {
+      val source = scheduler.createHotObservable(Seq(500 -> OnCompleted))
+
+      val notifications = scheduler.run(source.timeout(new Duration(200), scheduler))
+
+      notifications must beLike {
+        case Seq(Pair(400, OnError(error))) => error.isInstanceOf[TimeoutException]
+      }
+      source.subscriptions must be equalTo Seq(200 -> 400)
     }
   }
 
