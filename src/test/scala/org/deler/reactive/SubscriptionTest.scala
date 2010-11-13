@@ -121,7 +121,7 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
 
     "close added subscriptions that are removed" in {
-      subject remove delegate1
+      subject -= delegate1
 
       there was one(delegate1).close()
       there were noMoreCallsTo(delegate2)
@@ -130,12 +130,23 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     "not close subscription that are removed but were not added" in {
       val subscription = mock[Subscription]
 
-      subject remove subscription
+      subject -= subscription
 
       there were noMoreCallsTo(subscription)
     }
 
-    "close all added subscriptions when closed" in {
+    "close all contained subscriptions when cleared, but not close itself" in {
+      val subscription = mock[Subscription]
+
+      subject.clear()
+      subject += subscription
+
+      there was one(delegate1).close()
+      there was one(delegate2).close()
+      there were noMoreCallsTo(subscription)
+    }
+
+    "close all contained subscriptions when closed" in {
       subject.close()
 
       there was one(delegate1).close()
@@ -146,7 +157,7 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
       val subscription = mock[Subscription]
       subject.close()
 
-      subject remove subscription
+      subject -= subscription
 
       there were noMoreCallsTo(subscription)
     }
@@ -158,7 +169,7 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     subject.close()
 
     "close subscriptions that are added" in {
-      subject add delegate
+      subject += delegate
 
       there was one(delegate).close()
     }

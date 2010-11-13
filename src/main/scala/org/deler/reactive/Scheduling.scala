@@ -46,9 +46,9 @@ trait Scheduler {
     val result = new CompositeSubscription
     def self() {
       val subscription = new MutableSubscription
-      result.add(subscription)
+      result += subscription
       subscription.set(schedule {
-        result.remove(subscription)
+        result -= subscription
         action(self)
       })
     }
@@ -66,9 +66,9 @@ trait Scheduler {
     val result = new CompositeSubscription
     def self(delay: Duration) {
       val subscription = new MutableSubscription
-      result.add(subscription)
+      result += subscription
       subscription.set(scheduleAfter(delay) {
-        result.remove(subscription)
+        result -= subscription
         action(self)
       })
     }

@@ -1,6 +1,7 @@
 package org.deler.reactive
 
 import java.util.concurrent.atomic.AtomicBoolean
+import scala.collection._
 
 /**
  * Represents a subscription that can be cancelled by using the `close` method. Closing a subscription
@@ -71,7 +72,7 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
   def this(subscription: Subscription) = this (Some(subscription))
 
   /**
-   * Closes the contained subscription (if any) without closing this.
+   * Closes and clears the contained subscription (if any) without closing this.
    */
   def clear(): Unit = synchronized {
     _subscription foreach {_.close()}
@@ -120,8 +121,9 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
  * subscriptions are also closed. A closed CompositeSubscription will also automatically close any new subscriptions
  * that are added.
  */
-class CompositeSubscription(initial: Subscription*) extends Subscription {
-  import scala.collection._
+class CompositeSubscription(initial: Subscription*) extends Subscription
+        with generic.Growable[Subscription]
+        with generic.Shrinkable[Subscription] {
 
   private var _closed = false
   private val _subscriptions = mutable.Set[Subscription](initial: _*)
@@ -130,40 +132,46 @@ class CompositeSubscription(initial: Subscription*) extends Subscription {
    * Adds the `subscription` to this CompositeSubscription or closes the `subscription` if this CompositeSubscription
    * is already closed.
    */
-  def add(subscription: Subscription) = synchronized {
-    if (_closed) {
-      subscription.close()
-    } else {
-      _subscriptions add subscription
+  def +=(subscription: Subscription): this.type = {
+    synchronized {
+      if (_closed) {
+        subscription.close()
+      } else {
+        _subscriptions add subscription
+      }
     }
+    this
   }
 
   /**
    * Removes and closes the `subscription`. Does nothing when the `subscription` is not part of this
    * CompositeSubscription.
    */
-  def remove(subscription: Subscription): Unit = synchronized {
-    if (_subscriptions remove subscription) {
-      subscription.close()
+  def -=(subscription: Subscription): this.type = {
+    synchronized {
+      if (_subscriptions remove subscription) {
+        subscription.close()
+      }
     }
+    this
   }
 
   /**
-   * Tests if this CompositeSubscription is empty.
-   *
-   * @return `true` if there is no subscription in this CompositeSubscription, `false` otherwise.
+   * Closes and clears the contained subscriptions (if any) without closing this.
    */
-  def isEmpty: Boolean = synchronized {_subscriptions.isEmpty}
+  def clear(): Unit = synchronized {
+    _subscriptions foreach {_.close()}
+    _subscriptions.clear()
+  }
 
   /**
-   * Closes all contained Subscriptions and removes them from this CompositeSubscription.
+   * Closes all contained Subscriptions and removes them from this CompositeSubscription. Then closes this.
    */
   def close(): Unit = synchronized {
     if (_closed)
       return
 
     _closed = true
-    _subscriptions foreach {_.close()}
-    _subscriptions.clear()
+    clear()
   }
 }

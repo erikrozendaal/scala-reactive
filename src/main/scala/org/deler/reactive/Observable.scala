@@ -173,7 +173,7 @@ trait Observable[+A] {
       val subscription = new MutableSubscription
       val result = new CompositeSubscription(subscription)
 
-      result.add(scheduler scheduleRecursive {
+      result += scheduler scheduleRecursive {
         recurs =>
           subscription clearAndSet {
             self.subscribe(
@@ -181,7 +181,7 @@ trait Observable[+A] {
               onError = observer.onError,
               onCompleted = recurs)
           }
-      })
+      }
       result
   }
 
@@ -194,7 +194,7 @@ trait Observable[+A] {
       val result = new CompositeSubscription(subscription)
 
       var count = 0
-      result.add(scheduler scheduleRecursive {
+      result += scheduler scheduleRecursive {
         recurs =>
           if (count >= n) {
             observer.onCompleted()
@@ -207,7 +207,7 @@ trait Observable[+A] {
                 onCompleted = recurs)
             }
           }
-      })
+      }
       result
   }
 
@@ -433,7 +433,7 @@ object Observable {
           },
           onCompleted = {
             () =>
-              result.remove(generatorSubscription)
+              result -= generatorSubscription
               if (activeCount.decrementAndGet() == 0) {
                 target.onCompleted()
               }
@@ -443,11 +443,11 @@ object Observable {
               activeCount.incrementAndGet()
 
               val holder = new MutableSubscription
-              result.add(holder)
+              result += holder
 
               holder.set(value.subscribe(new Observer[A] {
                 override def onCompleted() {
-                  result.remove(holder)
+                  result -= holder
                   if (activeCount.decrementAndGet() == 0) {
                     target.onCompleted()
                   }

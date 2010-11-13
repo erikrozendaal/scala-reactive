@@ -47,15 +47,15 @@ class ReplaySubject[A](scheduler: Scheduler = Scheduler.currentThread) extends S
   override def subscribe(observer: Observer[A]): Subscription = CurrentThreadScheduler runImmediate {
     val result = new CompositeSubscription
     val it = values.iterator
-    result.add(scheduler scheduleRecursive {
+    result += scheduler scheduleRecursive {
       self =>
         if (it.hasNext) {
           it.next.accept(observer)
           self()
         } else {
-          result.add(super.subscribe(observer))
+          result += super.subscribe(observer)
         }
-    })
+    }
     result
   }
 
