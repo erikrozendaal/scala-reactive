@@ -467,8 +467,6 @@ object Observable {
    */
   def defaultOnCompleted() {}
 
-  def noop() {}
-
   def create[A](delegate: Observer[A] => () => Unit): Observable[A] = createWithSubscription {
     observer =>
       val unsubscribe = delegate(observer)

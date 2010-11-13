@@ -57,7 +57,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         observer =>
           delegateCalled = true
           observer.onNext("delegate")
-          Observable.noop
+          () => {}
       }
 
       observable.subscribe(observer)
