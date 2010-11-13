@@ -12,4 +12,7 @@ object Merge extends Application {
   merged subscribe { n =>
     println("Received " + n + " at " + new LocalDateTime().toString("HH:mm:ss.SSS"))
   }
+
+  println("Press enter to stop")
+  readLine()
 }
