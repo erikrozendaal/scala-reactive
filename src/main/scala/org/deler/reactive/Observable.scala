@@ -370,6 +370,9 @@ trait Observable[+A] {
   }
 }
 
+/**
+ * @define coll observable sequence
+ */
 object Observable {
   def apply[A](values: A*)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] =
     new IterableToObservableWrapper(values).toObservable(scheduler)
@@ -407,31 +410,46 @@ object Observable {
     }
   }
 
+  /**
+   * Returns an empty $coll.
+   */
   def empty(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithSubscription {
     observer =>
       scheduler schedule observer.onCompleted()
   }
 
+  /**
+   * Returns a $coll that terminates with `error`.
+   */
   def raise(error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithSubscription {
     observer =>
       scheduler schedule observer.onError(error)
   }
 
+  /**
+   * Returns a $coll that contains a single `value`.
+   */
   def value[A](value: A)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = {
     Seq(value).toObservable(scheduler)
   }
 
-  def interval(interval: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithSubscription {
+  /**
+   * Returns an infinite $coll that produces a new value each `period`. The values produced are `0`, `1`, `2`, ...
+   */
+  def interval(period: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithSubscription {
     observer =>
       var counter = 0
-      scheduler.scheduleRecursiveAfter(interval) {
+      scheduler.scheduleRecursiveAfter(period) {
         reschedule =>
           observer.onNext(counter)
           counter += 1
-          reschedule(interval)
+          reschedule(period)
       }
   }
 
+  /**
+   * Returns an $coll that produces a single value after `dueTime`. The value produced is `0`.
+   */
   def timer(dueTime: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithSubscription {
     observer =>
       scheduler.scheduleAfter(dueTime) {
