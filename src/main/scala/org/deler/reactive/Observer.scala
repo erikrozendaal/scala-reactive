@@ -28,7 +28,7 @@ trait Observer[-A] {
  * An observer that just delegates to `delegate`. Used to mix in additional behavior on existing observers.
  */
 class DelegateObserver[-A](delegate: Observer[A]) extends Observer[A] {
-  def onNext(value: A) = delegate.onNext(value)
+  override def onNext(value: A) = delegate.onNext(value)
 
   override def onError(error: Exception) = delegate.onError(error)
 

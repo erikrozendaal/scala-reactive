@@ -66,10 +66,9 @@ trait Observable[+A] {
       val subscription = new MutableSubscription
       val result = new MutableSubscription(subscription)
 
-      subscription.set(self.subscribe(
-        onNext = observer.onNext,
-        onError = observer.onError,
-        onCompleted = () => result clearAndSet {that.subscribe(observer)}))
+      subscription.set(self.subscribe(new DelegateObserver(observer) {
+        override def onCompleted() = result clearAndSet {that.subscribe(observer)}
+      }))
 
       result
   }
@@ -84,11 +83,7 @@ trait Observable[+A] {
    */
   def filter(predicate: A => Boolean): Observable[A] = createWithSubscription {
     observer =>
-      self.subscribe(new Observer[A] {
-        override def onCompleted() = observer.onCompleted()
-
-        override def onError(error: Exception) = observer.onError(error)
-
+      self.subscribe(new DelegateObserver(observer) {
         override def onNext(value: A) {
           catching(classOf[Exception]) either predicate(value) match {
             case Left(error) => observer.onError(error.asInstanceOf[Exception])
@@ -121,16 +116,16 @@ trait Observable[+A] {
   def map[B](f: A => B): Observable[B] = createWithSubscription {
     observer =>
       self.subscribe(new Observer[A] {
-        override def onCompleted() = observer.onCompleted()
-
-        override def onError(error: Exception) = observer.onError(error)
-
         override def onNext(value: A) {
           catching(classOf[Exception]) either f(value) match {
             case Left(error) => observer.onError(error.asInstanceOf[Exception])
             case Right(mapped) => observer.onNext(mapped)
           }
         }
+
+        override def onError(error: Exception) = observer.onError(error)
+
+        override def onCompleted() = observer.onCompleted()
       })
   }
 
@@ -176,10 +171,9 @@ trait Observable[+A] {
       result += scheduler scheduleRecursive {
         recurs =>
           subscription clearAndSet {
-            self.subscribe(
-              onNext = observer.onNext,
-              onError = observer.onError,
-              onCompleted = recurs)
+            self.subscribe(new DelegateObserver(observer) {
+              override def onCompleted() = recurs()
+            })
           }
       }
       result
@@ -201,10 +195,9 @@ trait Observable[+A] {
           } else {
             count += 1
             subscription clearAndSet {
-              self.subscribe(
-                onNext = observer.onNext,
-                onError = observer.onError,
-                onCompleted = recurs)
+              self.subscribe(new DelegateObserver(observer) {
+                override def onCompleted() = recurs()
+              })
             }
           }
       }
@@ -216,20 +209,19 @@ trait Observable[+A] {
    */
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>
-      var count: Int = 0
-      self.subscribe(
-        onNext = {
-          value =>
-            if (count < n) {
-              count += 1
-              observer.onNext(value)
-            }
-            if (count >= n) {
-              observer.onCompleted()
-            }
-        },
-        onError = observer.onError,
-        onCompleted = observer.onCompleted)
+      self.subscribe(new DelegateObserver(observer) {
+        var count: Int = 0
+
+        override def onNext(value: A) {
+          if (count < n) {
+            count += 1
+            observer.onNext(value)
+          }
+          if (count >= n) {
+            observer.onCompleted()
+          }
+        }
+      })
   }
 
   /**
@@ -263,10 +255,9 @@ trait Observable[+A] {
       val subscription = new MutableSubscription
       val result = new MutableSubscription(subscription)
 
-      subscription.set(self.subscribe(
-        onNext = observer.onNext,
-        onCompleted = observer.onCompleted,
-        onError = error => result clearAndSet {source.subscribe(observer)}))
+      subscription.set(self.subscribe(new DelegateObserver(observer) {
+        override def onError(error: Exception) = result clearAndSet {source.subscribe(observer)}
+      }))
 
       result
   }
@@ -367,7 +358,7 @@ object Observable {
     override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate {
       val subscription = new MutableSubscription
       subscription.set(delegate(new DelegateObserver[A](observer) with ConformingObserver[A] {
-        protected def close() = subscription.close()
+        override protected def close() = subscription.close()
       }))
       subscription
     }
@@ -475,10 +466,7 @@ object Observable {
   class DematerializeObservableWrapper[A](source: Observable[Notification[A]]) {
     def dematerialize: Observable[A] = createWithSubscription {
       observer =>
-        source.subscribe(
-          onNext = _.accept(observer),
-          onError = observer.onError,
-          onCompleted = observer.onCompleted)
+        source.subscribe(onNext = _.accept(observer), onError = observer.onError, onCompleted = observer.onCompleted)
     }
   }
 
