@@ -332,7 +332,7 @@ trait Observable[+A] {
 
   def synchronize: Observable[A] = createWithSubscription {
     observer =>
-      this.subscribe(new SynchronizedObserver(observer))
+      this.subscribe(new DelegateObserver[A](observer) with SynchronizedObserver[A])
   }
 }
 
@@ -366,7 +366,9 @@ object Observable {
   def createWithSubscription[A](delegate: Observer[A] => Subscription): Observable[A] = new Observable[A] {
     override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate {
       val subscription = new MutableSubscription
-      subscription.set(delegate(new RelayObserver(observer, subscription)))
+      subscription.set(delegate(new DelegateObserver[A](observer) with ConformingObserver[A] {
+        def close() = subscription.close()
+      }))
       subscription
     }
   }
@@ -419,7 +421,7 @@ object Observable {
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
     def merge: Observable[A] = createWithSubscription {
       observer =>
-        val target = new SynchronizedObserver(observer)
+        val target = new DelegateObserver[A](observer) with SynchronizedObserver[A]
         val generatorSubscription = new MutableSubscription
 
         val activeCount = new AtomicInteger(1)
@@ -481,49 +483,5 @@ object Observable {
   }
 
   implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
-
-}
-
-private class SynchronizedObserver[A](target: Observer[A]) extends Observer[A] {
-  override def onNext(value: A) = synchronized {
-    target.onNext(value)
-  }
-
-  override def onError(error: Exception) = synchronized {
-    target.onError(error)
-  }
-
-  override def onCompleted() = synchronized {
-    target.onCompleted()
-  }
-}
-
-/**
- * Observer that passes on all notifications to a `target` observer, taking care that no more notifications
- * are send after either `onError` or `onCompleted` occurred.
- *
- * The subscription to the underlying source is also closed before onCompleted or onError is received.
- */
-private class RelayObserver[-A](target: Observer[A], subscription: Subscription) extends Observer[A] {
-  private var completed = false
-
-  override def onCompleted() {
-    if (completed) return
-    completed = true
-    subscription.close()
-    target.onCompleted()
-  }
-
-  override def onError(error: Exception) {
-    if (completed) return
-    completed = true
-    subscription.close()
-    target.onError(error);
-  }
-
-  override def onNext(value: A) {
-    if (completed) return
-    target.onNext(value)
-  }
 
 }
