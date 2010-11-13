@@ -500,34 +500,34 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "republish single value" in {
       val notifications = scheduler.run {Observable.value("value").repeat.take(3)}
 
-      notifications must be equalTo Seq(202 -> OnNext("value"), 205 -> OnNext("value"), 208 -> OnNext("value"), 208 -> OnCompleted)
+      notifications must be equalTo Seq(201 -> OnNext("value"), 203 -> OnNext("value"), 205 -> OnNext("value"), 205 -> OnCompleted)
     }
 
     "repeat source observable" in {
       val notifications = scheduler.run {Observable(1, 2, 3).repeat.take(7)}
 
       notifications must be equalTo Seq(
-        202 -> OnNext(1), 203 -> OnNext(2), 204 -> OnNext(3),
-        207 -> OnNext(1), 208 -> OnNext(2), 209 -> OnNext(3),
-        212 -> OnNext(1), 212 -> OnCompleted)
+        201 -> OnNext(1), 202 -> OnNext(2), 203 -> OnNext(3),
+        205 -> OnNext(1), 206 -> OnNext(2), 207 -> OnNext(3),
+        209 -> OnNext(1), 209 -> OnCompleted)
     }
 
     "repeat zero" in {
-      val notifications = scheduler.run {Observable.value("value").repeatN(0)}
+      val notifications = scheduler.run {Observable.value("value").repeat(0)}
 
-      notifications must be equalTo Seq(201 -> OnCompleted)
+      notifications must be equalTo Seq(200 -> OnCompleted)
     }
 
     "repeat once" in {
-      val notifications = scheduler.run {Observable.value("value").repeatN(1)}
+      val notifications = scheduler.run {Observable.value("value").repeat(1)}
 
-      notifications must be equalTo Seq(202 -> OnNext("value"), 204 -> OnCompleted)
+      notifications must be equalTo Seq(201 -> OnNext("value"), 202 -> OnCompleted)
     }
 
     "repeat twice" in {
-      val notifications = scheduler.run {Observable.value("value").repeatN(2)}
+      val notifications = scheduler.run {Observable.value("value").repeat(2)}
 
-      notifications must be equalTo Seq(202 -> OnNext("value"), 205 -> OnNext("value"), 207 -> OnCompleted)
+      notifications must be equalTo Seq(201 -> OnNext("value"), 203 -> OnNext("value"), 204 -> OnCompleted)
     }
   }
 

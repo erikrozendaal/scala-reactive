@@ -181,44 +181,38 @@ trait Observable[+A] {
   /**
    * Repeats the source observable indefinitely.
    */
-  def repeat(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
+  def repeat: Observable[A] = createWithSubscription {
     observer =>
-      val subscription = new MutableSubscription
-      val result = new CompositeSubscription(subscription)
-
-      result += scheduler scheduleRecursive {
-        recurs =>
-          subscription clearAndSet {
-            this.subscribe(new DelegateObserver(observer) {
-              override def onCompleted() = recurs()
-            })
-          }
+      val result = new MutableSubscription
+      def run() {
+        result clearAndSet this.subscribe(new DelegateObserver(observer) {
+          override def onCompleted() = run()
+        })
       }
+
+      run()
       result
   }
 
   /**
    * Repeats the source observable `n` times.
    */
-  def repeatN(n: Int)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
+  def repeat(n: Int): Observable[A] = createWithSubscription {
     observer =>
-      val subscription = new MutableSubscription
-      val result = new CompositeSubscription(subscription)
-
-      var count = 0
-      result += scheduler scheduleRecursive {
-        recurs =>
-          if (count >= n) {
-            observer.onCompleted()
-          } else {
-            count += 1
-            subscription clearAndSet {
-              this.subscribe(new DelegateObserver(observer) {
-                override def onCompleted() = recurs()
-              })
+      val result = new MutableSubscription
+      def run(count: Int) {
+        if (count >= n) {
+          observer.onCompleted()
+        } else {
+          result clearAndSet this.subscribe(new DelegateObserver(observer) {
+            override def onCompleted() {
+              run(count + 1)
             }
-          }
+          })
+        }
       }
+
+      run(0)
       result
   }
 
