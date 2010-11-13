@@ -1,14 +1,18 @@
 package org.deler.reactive
 
-import scala.collection._
-import scala.util.control.Exception._
-import org.joda.time.Duration
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
+import org.joda.time.Duration
+import scala.collection._
+import scala.concurrent.SyncVar
+import scala.util.control.Exception._
 
 /**
  * An observable can be subscribed to by an [[org.deler.reactive.Observer]]. Observables produce zero or more values
  * using `onNext` optionally terminated by either a call to `onCompleted` or `onError`.
+ *
+ * @define coll observable sequence
+ * @define Coll Observable
  */
 trait Observable[+A] {
   import Observable._
@@ -91,6 +95,21 @@ trait Observable[+A] {
           }
         }
       })
+  }
+
+  /**
+   * Returns the first value in this $coll.
+   *
+   * @throws IllegalStateException this $coll is empty.
+   */
+  def first: A = {
+    val result = new SyncVar[Notification[A]]
+    this.materialize.take(1).subscribe(result.set(_))
+    result.get match {
+      case OnNext(value) => value
+      case OnError(error) => throw error
+      case OnCompleted => throw new IllegalStateException("sequence is empty")
+    }
   }
 
   /**

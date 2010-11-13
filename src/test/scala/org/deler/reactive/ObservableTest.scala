@@ -293,6 +293,31 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "Observable.first" should {
+    "return the first observed value" in {
+      val value = Observable("value").first
+
+      value must be equalTo "value"
+    }
+
+    "ignore subsequent values" in {
+      val value = Observable("first", "second").first
+
+      value must be equalTo "first"
+    }
+
+    "throw an exception on error" in {
+      val error: Observable[String] = Observable.raise(ex)
+
+      error.first must throwException(ex)
+    }
+
+    "throw an exception when the observable is empty" in {
+      val empty: Observable[String] = Observable.empty
+
+      empty.first must throwA[IllegalStateException]
+    }
+  }
 
   "Observable.toSeq" should {
     "return all values until observable is completed" in {
