@@ -11,7 +11,6 @@ import java.util.concurrent.atomic.AtomicInteger
  * using `onNext` optionally terminated by either a call to `onCompleted` or `onError`.
  */
 trait Observable[+A] {
-  self =>
   import Observable._
 
   /**
@@ -66,7 +65,7 @@ trait Observable[+A] {
       val subscription = new MutableSubscription
       val result = new MutableSubscription(subscription)
 
-      subscription.set(self.subscribe(new DelegateObserver(observer) {
+      subscription.set(this.subscribe(new DelegateObserver(observer) {
         override def onCompleted() = result clearAndSet {that.subscribe(observer)}
       }))
 
@@ -76,14 +75,14 @@ trait Observable[+A] {
   /**
    * flatMap
    */
-  def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(self.map(f)).merge
+  def flatMap[B](f: A => Observable[B]): Observable[B] = new NestedObservableWrapper(this.map(f)).merge
 
   /**
    * A new observable only containing the values from this observable for which the predicate is satisfied.
    */
   def filter(predicate: A => Boolean): Observable[A] = createWithSubscription {
     observer =>
-      self.subscribe(new DelegateObserver(observer) {
+      this.subscribe(new DelegateObserver(observer) {
         override def onNext(value: A) {
           catching(classOf[Exception]) either predicate(value) match {
             case Left(error) => observer.onError(error.asInstanceOf[Exception])
@@ -115,7 +114,7 @@ trait Observable[+A] {
    */
   def map[B](f: A => B): Observable[B] = createWithSubscription {
     observer =>
-      self.subscribe(new Observer[A] {
+      this.subscribe(new Observer[A] {
         override def onNext(value: A) {
           catching(classOf[Exception]) either f(value) match {
             case Left(error) => observer.onError(error.asInstanceOf[Exception])
@@ -134,7 +133,7 @@ trait Observable[+A] {
    */
   def materialize: Observable[Notification[A]] = createWithSubscription {
     observer =>
-      self.subscribe(new Observer[A] {
+      this.subscribe(new Observer[A] {
         override def onCompleted() = observer.onNext(OnCompleted)
 
         override def onError(error: Exception) = observer.onNext(OnError(error))
@@ -171,7 +170,7 @@ trait Observable[+A] {
       result += scheduler scheduleRecursive {
         recurs =>
           subscription clearAndSet {
-            self.subscribe(new DelegateObserver(observer) {
+            this.subscribe(new DelegateObserver(observer) {
               override def onCompleted() = recurs()
             })
           }
@@ -195,7 +194,7 @@ trait Observable[+A] {
           } else {
             count += 1
             subscription clearAndSet {
-              self.subscribe(new DelegateObserver(observer) {
+              this.subscribe(new DelegateObserver(observer) {
                 override def onCompleted() = recurs()
               })
             }
@@ -209,7 +208,7 @@ trait Observable[+A] {
    */
   def take(n: Int): Observable[A] = createWithSubscription {
     observer =>
-      self.subscribe(new DelegateObserver(observer) {
+      this.subscribe(new DelegateObserver(observer) {
         var count: Int = 0
 
         override def onNext(value: A) {
@@ -229,7 +228,7 @@ trait Observable[+A] {
    */
   def toSeq: Seq[A] = {
     val result = new LinkedBlockingQueue[Notification[A]]
-    val subscription = self.materialize.subscribe(result.put(_))
+    val subscription = this.materialize.subscribe(result.put(_))
 
     def resultToStream: Stream[A] = {
       result.take() match {
@@ -255,7 +254,7 @@ trait Observable[+A] {
       val subscription = new MutableSubscription
       val result = new MutableSubscription(subscription)
 
-      subscription.set(self.subscribe(new DelegateObserver(observer) {
+      subscription.set(this.subscribe(new DelegateObserver(observer) {
         override def onError(error: Exception) = result clearAndSet {source.subscribe(observer)}
       }))
 
@@ -270,7 +269,7 @@ trait Observable[+A] {
     observer =>
       val result = new MutableSubscription
       scheduler schedule {
-        val subscription = self.subscribe(observer)
+        val subscription = this.subscribe(observer)
 
         result.set(new ScheduledSubscription(subscription, scheduler))
       }
