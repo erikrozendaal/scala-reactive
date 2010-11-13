@@ -98,6 +98,85 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "Observable.takeUntil" should {
+    "not produce any value when other observable sequence produces first value" in {
+      val source = scheduler.createHotObservable(Seq(300 -> OnNext("ignored")))
+      val other = scheduler.createHotObservable(Seq(250 -> OnNext("trigger")))
+
+      val notifications = scheduler.run(source.takeUntil(other))
+
+      notifications must be equalTo Seq(250 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 250)
+      other.subscriptions must be equalTo Seq(200 -> 250)
+    }
+
+    "produce all source values when it completes before the other observable produces a value" in {
+      val source = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        320 -> OnNext("second"),
+        350 -> OnCompleted))
+      val other = scheduler.createHotObservable(Seq(400 -> OnNext("trigger")))
+
+      val notifications = scheduler.run(source.takeUntil(other))
+
+      notifications must be equalTo Seq(
+        300 -> OnNext("first"),
+        320 -> OnNext("second"),
+        350 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 350)
+      other.subscriptions must be equalTo Seq(200 -> 350)
+    }
+
+    "unsubscribe from source when first value is produced by other" in {
+      val source = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        320 -> OnNext("second"),
+        350 -> OnCompleted))
+      val other = scheduler.createHotObservable(Seq(310 -> OnNext("trigger")))
+
+      val notifications = scheduler.run(source.takeUntil(other))
+
+      notifications must be equalTo Seq(
+        300 -> OnNext("first"),
+        310 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 310)
+      other.subscriptions must be equalTo Seq(200 -> 310)
+    }
+
+    "unsubscribe from other when it completes before source completes" in {
+      val source = scheduler.createHotObservable(Seq(
+        300 -> OnNext("first"),
+        320 -> OnNext("second"),
+        350 -> OnCompleted))
+      val other = scheduler.createHotObservable(Seq(310 -> OnCompleted))
+
+      val notifications = scheduler.run(source.takeUntil(other))
+
+      notifications must be equalTo Seq(
+        300 -> OnNext("first"),
+        320 -> OnNext("second"),
+        350 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 350)
+      other.subscriptions must be equalTo Seq(200 -> 310)
+    }
+  }
+
+  "Observable.timer" should {
+    "generate zero when expired" in {
+      val notifications = scheduler.run {Observable.timer(new Duration(300))(scheduler)}
+
+      notifications must be equalTo Seq(500 -> OnNext(0), 500 -> OnCompleted)
+    }
+
+    "not generate a value when unsubscribed" in {
+      val notifications = scheduler.run(
+        Observable.timer(new Duration(300))(scheduler),
+        unsubscribeAt = new Instant(400))
+
+      notifications must beEmpty
+    }
+  }
+
   "Iterable.toObservable" should {
     implicit val defaultToTestScheduler = scheduler
 

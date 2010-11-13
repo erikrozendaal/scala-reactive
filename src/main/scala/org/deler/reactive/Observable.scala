@@ -237,6 +237,37 @@ trait Observable[+A] {
   }
 
   /**
+   * Takes values from this $coll until the `other` $coll produces a value.
+   */
+  def takeUntil(other: Observable[Any]): Observable[A] = createWithSubscription {
+    observer =>
+      val sourceSubscription = new MutableSubscription
+      val otherSubscription = new MutableSubscription
+      val result = new CompositeSubscription(sourceSubscription, otherSubscription)
+
+      val target = new DelegateObserver[A](observer) with SynchronizedObserver[A]
+
+      sourceSubscription.set(this.subscribe(target))
+      otherSubscription.set(other.subscribe(new Observer[Any] {
+        override def onNext(value: Any) {
+          result.close()
+          target.onCompleted()
+        }
+
+        override def onError(error: Exception) {
+          result.close()
+          target.onError(error)
+        }
+
+        override def onCompleted() {
+          result -= otherSubscription
+        }
+      }))
+
+      result
+  }
+
+  /**
    * Converts an Observable into a (lazy) Stream of values.
    */
   def toSeq: Seq[A] = {
@@ -400,6 +431,15 @@ object Observable {
           reschedule(interval)
       }
   }
+
+  def timer(dueTime: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithSubscription {
+    observer =>
+      scheduler.scheduleAfter(dueTime) {
+        observer.onNext(0)
+        observer.onCompleted()
+      }
+  }
+
 
   class IterableToObservableWrapper[+A](val iterable: Iterable[A]) {
     def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Subscription = this.toObservable(scheduler).subscribe(observer)
