@@ -274,13 +274,12 @@ trait Observable[+A] {
    */
   def takeUntil(other: Observable[Any]): Observable[A] = createWithCloseable {
     observer =>
-      val sourceSubscription = new MutableCloseable
       val otherSubscription = new MutableCloseable
-      val result = new CompositeCloseable(sourceSubscription, otherSubscription)
+      val result = new CompositeCloseable(otherSubscription)
 
       val target = new DelegateObserver[A](observer) with SynchronizedObserver[A]
 
-      sourceSubscription.set(this.subscribe(target))
+      result += this.subscribe(target)
       otherSubscription.set(other.subscribe(new Observer[Any] {
         override def onNext(value: Any) {
           result.close()

@@ -346,6 +346,28 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       notifications must be equalTo Seq(201 -> OnError(ex))
     }
 
+    "map each value with the provided function" in {
+      val observable = scheduler.createHotObservable(Seq(
+        200 -> OnNext("too early"),
+        201 -> OnNext("first"),
+        300 -> OnNext("second"),
+        500 -> OnCompleted,
+        600 -> OnNext("ignored")))
+      var invoked = 0
+
+      val notifications = scheduler run {observable.map(n => {
+        invoked += 1
+        n
+      })}
+
+      notifications must be equalTo Seq(
+        201 -> OnNext("first"),
+        300 -> OnNext("second"),
+        500 -> OnCompleted)
+      invoked must be equalTo 2
+      observable.subscriptions must be equalTo Seq(200 -> 500)
+    }
+
     "allow filtering using for-comprehension" in {
       val observable = Observable("first", "second")
 
