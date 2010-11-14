@@ -708,7 +708,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
   }
 
   "Observable.dematerialize" should {
-    val observable = new Subject[Notification[String]]
+    val observable = new BasicSubject[Notification[String]]
     val observer = mock[Observer[String]]
 
     "map each OnNext value to Observer.onNext" in {

@@ -13,7 +13,7 @@ class SubjectTest extends Specification with JUnit with Mockito {
   val observer2 = mock[Observer[String]]
   var subscription: Subscription = _
 
-  var subject = new Subject[String]
+  var subject: Subject[String] = new BasicSubject[String]
 
   val replaySubject = beforeContext(subject = new ReplaySubject[String])
 
@@ -120,6 +120,16 @@ class SubjectTest extends Specification with JUnit with Mockito {
       subject.subscribe(observer)
 
       there was one(observer).onNext(event) then one(observer).onError(error)
+      there were noMoreCallsTo(observer)
+    }
+
+    "stop remembering new notifications once completed" in {
+      subject.onNext("a")
+      subject.onCompleted()
+      subject.onNext("b")
+
+      subject.subscribe(observer)
+      there was one(observer).onNext("a") then one(observer).onCompleted()
       there were noMoreCallsTo(observer)
     }
   }

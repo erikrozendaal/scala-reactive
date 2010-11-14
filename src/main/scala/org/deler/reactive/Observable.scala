@@ -402,41 +402,7 @@ trait Observable[+A] {
    */
   def observeOn(scheduler: Scheduler): Observable[A] = createWithSubscription {
     observer =>
-      val queue = new LinkedBlockingQueue[Notification[A]]()
-      val size = new AtomicInteger(0)
-
-      val producerSubscription = new MutableSubscription
-      val consumerSubscription = new MutableSubscription
-      val result = new CompositeSubscription(producerSubscription, consumerSubscription)
-
-      def startConsumer() {
-        consumerSubscription.clearAndSet(scheduler scheduleRecursive {
-          reschedule =>
-            queue.remove() match {
-              case OnCompleted =>
-                result.close()
-                observer.onCompleted()
-              case OnError(error) =>
-                result.close()
-                observer.onError(error)
-              case OnNext(value) =>
-                observer.onNext(value)
-                if (size.decrementAndGet() > 0) {
-                  reschedule()
-                }
-            }
-        })
-      }
-
-      producerSubscription.set(this.materialize.subscribe {
-        notification =>
-          queue.put(notification)
-          if (size.getAndIncrement() == 0) {
-            startConsumer()
-          }
-      })
-
-      result
+      this.subscribe(new SchedulingObserver(observer, scheduler))
   }
 
   def synchronize: Observable[A] = createWithSubscription {

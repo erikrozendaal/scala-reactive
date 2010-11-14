@@ -2,33 +2,31 @@ package org.deler.reactive
 
 import scala.collection._
 
-class Subject[A](scheduler: Scheduler = Scheduler.immediate) extends Observable[A] with Observer[A] {
-  private var subscriptions = Set[SubjectSubscription]()
-  protected var completed = false
+trait Subject[A] extends Observable[A] with Observer[A]
+
+trait Dispatcher[A] extends Subject[A] {
+  private val subscriptions = mutable.Set[SubjectSubscription]()
 
   def subscribe(observer: Observer[A]): Subscription = {
     new SubjectSubscription(observer)
   }
 
-  override def onCompleted() {
-    if (completed) return
-    completed = true
-    dispatch(_.onCompleted())
-  }
-
   override def onNext(value: A) {
-    if (completed) return
     dispatch(_.onNext(value))
   }
 
   override def onError(error: Exception) {
-    if (completed) return
-    completed = true
     dispatch(_.onError(error))
+    subscriptions.clear()
+  }
+
+  override def onCompleted() {
+    dispatch(_.onCompleted())
+    subscriptions.clear()
   }
 
   private def dispatch(f: Observer[A] => Unit) {
-    subscriptions foreach {subscription => scheduler schedule f(subscription.observer)}
+    subscriptions foreach {subscription => f(subscription.observer)}
   }
 
   private class SubjectSubscription(val observer: Observer[A]) extends Subscription {
@@ -41,42 +39,48 @@ class Subject[A](scheduler: Scheduler = Scheduler.immediate) extends Observable[
 
 }
 
-class ReplaySubject[A](scheduler: Scheduler = Scheduler.currentThread) extends Subject[A](scheduler) {
+trait Recorder[A] extends Observer[A] {
   private var values = immutable.Queue[Notification[A]]()
 
-  override def subscribe(observer: Observer[A]): Subscription = CurrentThreadScheduler runImmediate {
-    val result = new CompositeSubscription
-    val it = values.iterator
-    result += scheduler scheduleRecursive {
-      self =>
-        if (it.hasNext) {
-          it.next.accept(observer)
-          self()
-        } else {
-          result += super.subscribe(observer)
-        }
-    }
-    result
+  protected def replay(observer: Observer[A]) {
+    values foreach {_.accept(observer)}
   }
 
-  override def onNext(value: A) {
-    if (!completed) {
-      values = values enqueue OnNext(value)
-    }
+  abstract override def onNext(value: A) {
+    values = values enqueue OnNext(value)
     super.onNext(value)
   }
 
-  override def onCompleted() {
-    if (!completed) {
-      values = values enqueue OnCompleted
-    }
+  abstract override def onCompleted() {
+    values = values enqueue OnCompleted
     super.onCompleted()
   }
 
-  override def onError(error: Exception) {
-    if (!completed) {
-      values = values enqueue OnError(error)
-    }
+  abstract override def onError(error: Exception) {
+    values = values enqueue OnError(error)
     super.onError(error)
   }
+
+}
+
+class BasicSubject[A](scheduler: Scheduler = Scheduler.immediate)
+        extends Dispatcher[A]
+                with ConformingObserver[A]
+                with SynchronizedObserver[A] {
+  override def subscribe(observer: Observer[A]): Subscription = {
+    super.subscribe(new SchedulingObserver(observer, scheduler))
+  }
+}
+
+class ReplaySubject[A](scheduler: Scheduler = Scheduler.currentThread)
+        extends Dispatcher[A]
+                with Recorder[A]
+                with ConformingObserver[A]
+                with SynchronizedObserver[A] {
+  override def subscribe(observer: Observer[A]): Subscription = CurrentThreadScheduler runImmediate {
+    val wrapped = new SchedulingObserver(observer, scheduler)
+    replay(wrapped)
+    super.subscribe(wrapped)
+  }
+
 }
