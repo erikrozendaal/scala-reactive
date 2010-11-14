@@ -7,7 +7,7 @@ trait Subject[A] extends Observable[A] with Observer[A]
 trait Dispatcher[A] extends Subject[A] {
   private val subscriptions = mutable.Set[SubjectSubscription]()
 
-  def subscribe(observer: Observer[A]): Subscription = {
+  def subscribe(observer: Observer[A]): Closeable = {
     new SubjectSubscription(observer)
   }
 
@@ -29,7 +29,7 @@ trait Dispatcher[A] extends Subject[A] {
     subscriptions foreach {subscription => f(subscription.observer)}
   }
 
-  private class SubjectSubscription(val observer: Observer[A]) extends Subscription {
+  private class SubjectSubscription(val observer: Observer[A]) extends Closeable {
     subscriptions += this
 
     def close {
@@ -67,7 +67,7 @@ class BasicSubject[A](scheduler: Scheduler = Scheduler.immediate)
         extends Dispatcher[A]
                 with ConformingObserver[A]
                 with SynchronizedObserver[A] {
-  override def subscribe(observer: Observer[A]): Subscription = {
+  override def subscribe(observer: Observer[A]): Closeable = {
     super.subscribe(new SchedulingObserver(observer, scheduler))
   }
 }
@@ -77,7 +77,7 @@ class ReplaySubject[A](scheduler: Scheduler = Scheduler.currentThread)
                 with Recorder[A]
                 with ConformingObserver[A]
                 with SynchronizedObserver[A] {
-  override def subscribe(observer: Observer[A]): Subscription = CurrentThreadScheduler runImmediate {
+  override def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
     val wrapped = new SchedulingObserver(observer, scheduler)
     replay(wrapped)
     super.subscribe(wrapped)

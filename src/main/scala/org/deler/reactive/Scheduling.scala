@@ -20,21 +20,21 @@ trait Scheduler {
    *
    * @return a subscription that can be used to cancel the scheduled action.
    */
-  def schedule(action: => Unit): Subscription = scheduleAt(now)(action)
+  def schedule(action: => Unit): Closeable = scheduleAt(now)(action)
 
   /**
    * Schedule `action` to be executed at or soon after `at`.
    *
    * @return a subscription that can be used to cancel the scheduled action.
    */
-  def scheduleAt(at: Instant)(action: => Unit): Subscription = scheduleAfter(new Duration(now, at))(action)
+  def scheduleAt(at: Instant)(action: => Unit): Closeable = scheduleAfter(new Duration(now, at))(action)
 
   /**
    * Schedule `action` to be run after the specified `delay`.
    *
    * @return a subscription that can be used to cancel the scheduled action.
    */
-  def scheduleAfter(delay: Duration)(action: => Unit): Subscription = scheduleAt(now plus delay)(action)
+  def scheduleAfter(delay: Duration)(action: => Unit): Closeable = scheduleAt(now plus delay)(action)
 
   /**
    * Schedule `action` to be executed by the scheduler (as with `schedule`). A callback
@@ -42,13 +42,13 @@ trait Scheduler {
    *
    * @return a subscription that can be used to cancel the scheduled action and any rescheduled actions.
    */
-  def scheduleRecursive(action: (() => Unit) => Unit): Subscription = {
-    val result = new CompositeSubscription
+  def scheduleRecursive(action: (() => Unit) => Unit): Closeable = {
+    val result = new CompositeCloseable
     def self() {
-      val subscription = new MutableSubscription
-      result += subscription
-      subscription.set(schedule {
-        result -= subscription
+      val scheduled = new MutableCloseable
+      result += scheduled
+      scheduled.set(schedule {
+        result -= scheduled
         action(self)
       })
     }
@@ -62,13 +62,13 @@ trait Scheduler {
    *
    * @return a subscription that can be used to cancel the scheduled action and any rescheduled actions.
    */
-  def scheduleRecursiveAfter(delay: Duration)(action: (Duration => Unit) => Unit): Subscription = {
-    val result = new CompositeSubscription
+  def scheduleRecursiveAfter(delay: Duration)(action: (Duration => Unit) => Unit): Closeable = {
+    val result = new CompositeCloseable
     def self(delay: Duration) {
-      val subscription = new MutableSubscription
-      result += subscription
-      subscription.set(scheduleAfter(delay) {
-        result -= subscription
+      val scheduled = new MutableCloseable
+      result += scheduled
+      scheduled.set(scheduleAfter(delay) {
+        result -= scheduled
         action(self)
       })
     }
@@ -102,12 +102,12 @@ object Scheduler {
 class ImmediateScheduler extends Scheduler {
   def now = new Instant
 
-  override def schedule(action: => Unit): Subscription = {
+  override def schedule(action: => Unit): Closeable = {
     action
-    NullSubscription
+    NullCloseable
   }
 
-  override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
+  override def scheduleAfter(delay: Duration)(action: => Unit): Closeable = {
     if (delay.getMillis > 0) {
       Thread.sleep(delay.getMillis)
     }
@@ -119,9 +119,9 @@ class ImmediateScheduler extends Scheduler {
  * Tracks state of the CurrentThreadScheduler.
  */
 object CurrentThreadScheduler extends ThreadLocal[Schedule] {
-  def runImmediate(action: => Subscription): Subscription = runWithSchedule(_ => action)
+  def runImmediate(action: => Closeable): Closeable = runWithSchedule(_ => action)
 
-  def runWithSchedule(action: Schedule => Subscription): Subscription = {
+  def runWithSchedule(action: Schedule => Closeable): Closeable = {
     var schedule = get
     if (schedule != null) {
       action(schedule)
@@ -169,7 +169,7 @@ class CurrentThreadScheduler extends Scheduler {
 
   def now = new Instant
 
-  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
+  override def scheduleAt(at: Instant)(action: => Unit): Closeable = {
     CurrentThreadScheduler.runWithSchedule {
       schedule =>
         schedule.enqueue(at, () => action)
@@ -183,10 +183,10 @@ class CurrentThreadScheduler extends Scheduler {
 class ThreadPoolScheduler(executor: ScheduledThreadPoolExecutor) extends Scheduler {
   def now = new Instant
 
-  override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
+  override def scheduleAfter(delay: Duration)(action: => Unit): Closeable = {
     val runnable = new Runnable {def run() {action}}
     val future = executor.schedule(runnable, delay.getMillis, TimeUnit.MILLISECONDS)
-    new ActionSubscription(() => {
+    new ActionCloseable(() => {
       future.cancel(false)
       executor.remove(runnable)
     })
@@ -205,7 +205,7 @@ class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler
 
   def now: Instant = _now
 
-  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
+  override def scheduleAt(at: Instant)(action: => Unit): Closeable = {
     scheduleAt enqueue (at, () => action)
   }
 
@@ -272,7 +272,7 @@ class TestHotObservable[T](scheduler: Scheduler) extends Observable[T] with Obse
   private var _observers = Set[Observer[T]]()
   private var _subscriptions = Set[Subscribe]()
 
-  def subscribe(observer: Observer[T]): Subscription = {
+  def subscribe(observer: Observer[T]): Closeable = {
     val result = new Subscribe(observer)
     _subscriptions += result
     result
@@ -295,7 +295,7 @@ class TestHotObservable[T](scheduler: Scheduler) extends Observable[T] with Obse
     _observers foreach (_.onCompleted())
   }
 
-  private class Subscribe(observer: Observer[T]) extends Subscription {
+  private class Subscribe(observer: Observer[T]) extends Closeable {
     val subscribedAt = scheduler.now.getMillis.toInt
     var unsubscribedAt: Option[Int] = None
     _observers += observer;
@@ -315,7 +315,7 @@ class TestHotObservable[T](scheduler: Scheduler) extends Observable[T] with Obse
  * video.
  */
 class TestScheduler extends VirtualScheduler(new Instant(0)) {
-  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
+  override def scheduleAt(at: Instant)(action: => Unit): Closeable = {
     val t = if (!(at isAfter now)) {
       now plus 1
     } else {
@@ -327,7 +327,7 @@ class TestScheduler extends VirtualScheduler(new Instant(0)) {
   def run[T](action: => Observable[T], unsubscribeAt: Instant = new Instant(1000)): Seq[(Int, Notification[T])] = {
     val observer = new TestObserver[T](this)
     var observable: Observable[T] = null;
-    val subscription = new MutableSubscription
+    val subscription = new MutableCloseable
 
     scheduleAt(new Instant(100)) {observable = action}
     scheduleAt(new Instant(200)) {subscription.set(observable.subscribe(observer))}
@@ -351,12 +351,12 @@ class TestScheduler extends VirtualScheduler(new Instant(0)) {
 trait LoggingScheduler extends Scheduler {
   private val log = LoggerFactory.getLogger(getClass);
 
-  private def trace(message: => String, s: => Subscription): Subscription = {
+  private def trace(message: => String, s: => Closeable): Closeable = {
     if (log.isTraceEnabled()) {
       val m = message
       log.trace("schedule '{}'", m);
       val subscription = s
-      new Subscription {
+      new Closeable {
         def close() {
           log.trace("cancel '{}'", m);
           subscription.close
@@ -367,15 +367,15 @@ trait LoggingScheduler extends Scheduler {
     }
   }
 
-  override def schedule(action: => Unit): Subscription = {
+  override def schedule(action: => Unit): Closeable = {
     trace("schedule", super.schedule(action))
   }
 
-  override def scheduleAt(at: Instant)(action: => Unit): Subscription = {
+  override def scheduleAt(at: Instant)(action: => Unit): Closeable = {
     trace("scheduleAt: " + at, super.scheduleAt(at)(action))
   }
 
-  override def scheduleAfter(delay: Duration)(action: => Unit): Subscription = {
+  override def scheduleAfter(delay: Duration)(action: => Unit): Closeable = {
     trace("scheduleAfter: " + delay, super.scheduleAfter(delay)(action))
   }
 }
@@ -394,11 +394,11 @@ private[reactive] class Schedule {
   private var sequence: Long = 0L
   private var schedule = SortedSet[ScheduledAction]()
 
-  def enqueue(time: Instant, action: () => Unit): Subscription = {
+  def enqueue(time: Instant, action: () => Unit): Closeable = {
     val scheduled = new ScheduledAction(time, sequence, action)
     schedule += scheduled
     sequence += 1
-    new Subscription {def close() = schedule -= scheduled}
+    new Closeable {def close() = schedule -= scheduled}
   }
 
   def dequeue: Option[ScheduledAction] = {

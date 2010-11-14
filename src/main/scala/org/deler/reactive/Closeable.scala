@@ -12,7 +12,7 @@ import scala.collection._
  *
  * Subscriptions must be thread-safe.
  */
-trait Subscription {
+trait Closeable {
 
   /**
    * Close (or cancel) the subscription. This operation is idempotent.
@@ -23,14 +23,14 @@ trait Subscription {
 /**
  * A simple subscription that does not do anything when closed.
  */
-object NullSubscription extends Subscription {
+object NullCloseable extends Closeable {
   def close() = {}
 }
 
 /**
  * A subscription that is marked as `closed` when `close` is invoked.
  */
-class BooleanSubscription extends Subscription {
+class BooleanCloseable extends Closeable {
   @volatile private var _closed = false
 
   def closed: Boolean = _closed;
@@ -43,7 +43,7 @@ class BooleanSubscription extends Subscription {
 /**
  * A subscription that executes `action` when closed for the first time.
  */
-class ActionSubscription(action: () => Unit) extends Subscription {
+class ActionCloseable(action: () => Unit) extends Closeable {
   private val _closed = new AtomicBoolean(false)
 
   def close() {
@@ -56,20 +56,20 @@ class ActionSubscription(action: () => Unit) extends Subscription {
 /**
  * Schedules the closing of `target` on the specified `scheduler` when closed.
  */
-class ScheduledSubscription(target: Subscription, scheduler: Scheduler)
-        extends ActionSubscription(() => scheduler schedule target.close())
+class ScheduledCloseable(target: Closeable, scheduler: Scheduler)
+        extends ActionCloseable(() => scheduler schedule target.close())
 
 /**
- * A subscription that (optionally) contains another subscription. When this MutableSubscription is closed the
+ * A subscription that (optionally) contains another subscription. When this MutableCloseable is closed the
  * contained subscription is also closed. Any future replacements will also be closed automatically.
  *
  * When the contained subscription is replaced with a new subscription the contained subscription is first closed.
  */
-class MutableSubscription(initial: Option[Subscription] = None) extends Subscription {
-  private var _subscription: Option[Subscription] = initial
+class MutableCloseable(initial: Option[Closeable] = None) extends Closeable {
+  private var _subscription: Option[Closeable] = initial
   @volatile private var _closed = false
 
-  def this(subscription: Subscription) = this (Some(subscription))
+  def this(subscription: Closeable) = this (Some(subscription))
 
   /**
    * Closes and clears the contained subscription (if any) without closing this.
@@ -85,7 +85,7 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
    *
    * @note not synchronized to avoid running `delegate` with this subscription locked!
    */
-  def clearAndSet(delegate: => Subscription) {
+  def clearAndSet(delegate: => Closeable) {
     if (_closed)
       return
 
@@ -98,7 +98,7 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
    * Closes the contained subscription (if any) and replaces it with `subscription`. Immediately closes `subscription`
    * if this subscription is already closed.
    */
-  def set(subscription: Subscription): Unit = synchronized {
+  def set(subscription: Closeable): Unit = synchronized {
     if (_closed) {
       subscription.close()
     } else {
@@ -117,22 +117,22 @@ class MutableSubscription(initial: Option[Subscription] = None) extends Subscrip
 }
 
 /**
- * A subscription that contains other subscriptions. When this CompositeSubscription is closed, all contained
- * subscriptions are also closed. A closed CompositeSubscription will also automatically close any new subscriptions
+ * A subscription that contains other subscriptions. When this CompositeCloseable is closed, all contained
+ * subscriptions are also closed. A closed CompositeCloseable will also automatically close any new subscriptions
  * that are added.
  */
-class CompositeSubscription(initial: Subscription*) extends Subscription
-        with generic.Growable[Subscription]
-        with generic.Shrinkable[Subscription] {
+class CompositeCloseable(initial: Closeable*) extends Closeable
+        with generic.Growable[Closeable]
+        with generic.Shrinkable[Closeable] {
 
   private var _closed = false
-  private val _subscriptions = mutable.Set[Subscription](initial: _*)
+  private val _subscriptions = mutable.Set[Closeable](initial: _*)
 
   /**
-   * Adds the `subscription` to this CompositeSubscription or closes the `subscription` if this CompositeSubscription
+   * Adds the `subscription` to this CompositeCloseable or closes the `subscription` if this CompositeCloseable
    * is already closed.
    */
-  def +=(subscription: Subscription): this.type = {
+  def +=(subscription: Closeable): this.type = {
     synchronized {
       if (_closed) {
         subscription.close()
@@ -145,9 +145,9 @@ class CompositeSubscription(initial: Subscription*) extends Subscription
 
   /**
    * Removes and closes the `subscription`. Does nothing when the `subscription` is not part of this
-   * CompositeSubscription.
+   * CompositeCloseable.
    */
-  def -=(subscription: Subscription): this.type = {
+  def -=(subscription: Closeable): this.type = {
     synchronized {
       if (_subscriptions remove subscription) {
         subscription.close()
@@ -165,7 +165,7 @@ class CompositeSubscription(initial: Subscription*) extends Subscription
   }
 
   /**
-   * Closes all contained Subscriptions and removes them from this CompositeSubscription. Then closes this.
+   * Closes all contained Subscriptions and removes them from this CompositeCloseable. Then closes this.
    */
   def close(): Unit = synchronized {
     if (_closed)

@@ -20,27 +20,27 @@ trait Observable[+A] {
   /**
    * Subscribes `observer`.
    */
-  def subscribe(observer: Observer[A]): Subscription
+  def subscribe(observer: Observer[A]): Closeable
 
   /**
    * Subscribes `onNext` to every value produced by this Observable.
    */
-  def subscribe(onNext: A => Unit): Subscription = subscribe(onNext, defaultOnError, defaultOnCompleted)
+  def subscribe(onNext: A => Unit): Closeable = subscribe(onNext, defaultOnError, defaultOnCompleted)
 
   /**
    * Subscribes `onNext` and `onError` to this Observable.
    */
-  def subscribe(onNext: A => Unit, onError: Exception => Unit): Subscription = subscribe(onNext, onError, defaultOnCompleted)
+  def subscribe(onNext: A => Unit, onError: Exception => Unit): Closeable = subscribe(onNext, onError, defaultOnCompleted)
 
   /**
    * Subscribes `onNext` and `onCompleted` to this Observable.
    */
-  def subscribe(onNext: A => Unit, onCompleted: () => Unit): Subscription = subscribe(onNext, defaultOnError, onCompleted)
+  def subscribe(onNext: A => Unit, onCompleted: () => Unit): Closeable = subscribe(onNext, defaultOnError, onCompleted)
 
   /**
    * Subscribes `onNext`, `onError`, and `onCompleted` to this Observable.
    */
-  def subscribe(onNext: A => Unit, onError: Exception => Unit, onCompleted: () => Unit): Subscription = {
+  def subscribe(onNext: A => Unit, onError: Exception => Unit, onCompleted: () => Unit): Closeable = {
     val completedCallback = onCompleted
     val errorCallback = onError
     val nextCallback = onNext
@@ -56,10 +56,10 @@ trait Observable[+A] {
   /**
    * Appends `that` observable to this observable.
    */
-  def ++[B >: A](that: Observable[B]): Observable[B] = createWithSubscription {
+  def ++[B >: A](that: Observable[B]): Observable[B] = createWithCloseable {
     observer =>
-      val subscription = new MutableSubscription
-      val result = new MutableSubscription(subscription)
+      val subscription = new MutableCloseable
+      val result = new MutableCloseable(subscription)
 
       subscription.set(this.subscribe(new DelegateObserver(observer) {
         override def onCompleted() = result clearAndSet {that.subscribe(observer)}
@@ -71,7 +71,7 @@ trait Observable[+A] {
   /**
    * Returns the first $coll to produce a notification.
    */
-  def amb[B >: A](other: Observable[B]): Observable[B] = createWithSubscription {
+  def amb[B >: A](other: Observable[B]): Observable[B] = createWithCloseable {
     observer =>
       val Unknown = 0
       val Left = 1
@@ -79,9 +79,9 @@ trait Observable[+A] {
 
       val leftOrRight = new AtomicInteger(Unknown)
 
-      val leftSubscription = new MutableSubscription
-      val rightSubscription = new MutableSubscription
-      val result = new CompositeSubscription(leftSubscription, rightSubscription)
+      val leftSubscription = new MutableCloseable
+      val rightSubscription = new MutableCloseable
+      val result = new CompositeCloseable(leftSubscription, rightSubscription)
 
       leftSubscription.set(this.materialize subscribe {
         notification =>
@@ -117,7 +117,7 @@ trait Observable[+A] {
   /**
    * A new observable only containing the values from this observable for which the predicate is satisfied.
    */
-  def filter(predicate: A => Boolean): Observable[A] = createWithSubscription {
+  def filter(predicate: A => Boolean): Observable[A] = createWithCloseable {
     observer =>
       this.subscribe(new DelegateObserver(observer) {
         override def onNext(value: A) {
@@ -164,7 +164,7 @@ trait Observable[+A] {
   /**
    * A new observable defined by applying a function to all values produced by this observable.
    */
-  def map[B](f: A => B): Observable[B] = createWithSubscription {
+  def map[B](f: A => B): Observable[B] = createWithCloseable {
     observer =>
       this.subscribe(new Observer[A] {
         override def onNext(value: A) {
@@ -183,7 +183,7 @@ trait Observable[+A] {
   /**
    * A new observable that materializes each notification of this observable as a [[org.deler.reactive.Notification]].
    */
-  def materialize: Observable[Notification[A]] = createWithSubscription {
+  def materialize: Observable[Notification[A]] = createWithCloseable {
     observer =>
       this.subscribe(new Observer[A] {
         override def onCompleted() = observer.onNext(OnCompleted)
@@ -214,9 +214,9 @@ trait Observable[+A] {
   /**
    * Repeats the source observable indefinitely.
    */
-  def repeat: Observable[A] = createWithSubscription {
+  def repeat: Observable[A] = createWithCloseable {
     observer =>
-      val result = new MutableSubscription
+      val result = new MutableCloseable
       def run() {
         result clearAndSet this.subscribe(new DelegateObserver(observer) {
           override def onCompleted() = run()
@@ -230,9 +230,9 @@ trait Observable[+A] {
   /**
    * Repeats the source observable `n` times.
    */
-  def repeat(n: Int): Observable[A] = createWithSubscription {
+  def repeat(n: Int): Observable[A] = createWithCloseable {
     observer =>
-      val result = new MutableSubscription
+      val result = new MutableCloseable
       def run(count: Int) {
         if (count >= n) {
           observer.onCompleted()
@@ -252,7 +252,7 @@ trait Observable[+A] {
   /**
    * A new observable that only produces up to `n` values from this observable and then completes.
    */
-  def take(n: Int): Observable[A] = createWithSubscription {
+  def take(n: Int): Observable[A] = createWithCloseable {
     observer =>
       this.subscribe(new DelegateObserver(observer) {
         var count: Int = 0
@@ -272,11 +272,11 @@ trait Observable[+A] {
   /**
    * Takes values from this $coll until the `other` $coll produces a value.
    */
-  def takeUntil(other: Observable[Any]): Observable[A] = createWithSubscription {
+  def takeUntil(other: Observable[Any]): Observable[A] = createWithCloseable {
     observer =>
-      val sourceSubscription = new MutableSubscription
-      val otherSubscription = new MutableSubscription
-      val result = new CompositeSubscription(sourceSubscription, otherSubscription)
+      val sourceSubscription = new MutableCloseable
+      val otherSubscription = new MutableCloseable
+      val result = new CompositeCloseable(sourceSubscription, otherSubscription)
 
       val target = new DelegateObserver[A](observer) with SynchronizedObserver[A]
 
@@ -368,10 +368,10 @@ trait Observable[+A] {
   /**
    * Switches to `source` when `this` terminates with an error.
    */
-  def rescue[B >: A](source: Observable[B]): Observable[B] = createWithSubscription {
+  def rescue[B >: A](source: Observable[B]): Observable[B] = createWithCloseable {
     observer =>
-      val subscription = new MutableSubscription
-      val result = new MutableSubscription(subscription)
+      val subscription = new MutableCloseable
+      val result = new MutableCloseable(subscription)
 
       subscription.set(this.subscribe(new DelegateObserver(observer) {
         override def onError(error: Exception) = result clearAndSet {source.subscribe(observer)}
@@ -384,13 +384,13 @@ trait Observable[+A] {
    * Asynchronously subscribe (and unsubscribe) observers on `scheduler`. The subscription is always completed
    * before the observer is unsubscribed.
    */
-  def subscribeOn(scheduler: Scheduler): Observable[A] = createWithSubscription {
+  def subscribeOn(scheduler: Scheduler): Observable[A] = createWithCloseable {
     observer =>
-      val result = new MutableSubscription
+      val result = new MutableCloseable
       scheduler schedule {
         val subscription = this.subscribe(observer)
 
-        result.set(new ScheduledSubscription(subscription, scheduler))
+        result.set(new ScheduledCloseable(subscription, scheduler))
       }
       result
   }
@@ -400,12 +400,12 @@ trait Observable[+A] {
    * delivered one at a time, in-order. An internal, unbounded queue is used to ensure the producer
    * is not limited by a slow consumer.
    */
-  def observeOn(scheduler: Scheduler): Observable[A] = createWithSubscription {
+  def observeOn(scheduler: Scheduler): Observable[A] = createWithCloseable {
     observer =>
       this.subscribe(new SchedulingObserver(observer, scheduler))
   }
 
-  def synchronize: Observable[A] = createWithSubscription {
+  def synchronize: Observable[A] = createWithCloseable {
     observer =>
       this.subscribe(new DelegateObserver[A](observer) with SynchronizedObserver[A])
   }
@@ -433,15 +433,15 @@ object Observable {
    */
   def defaultOnCompleted() {}
 
-  def create[A](delegate: Observer[A] => () => Unit): Observable[A] = createWithSubscription {
+  def create[A](delegate: Observer[A] => () => Unit): Observable[A] = createWithCloseable {
     observer =>
       val unsubscribe = delegate(observer)
-      new ActionSubscription(unsubscribe)
+      new ActionCloseable(unsubscribe)
   }
 
-  def createWithSubscription[A](delegate: Observer[A] => Subscription): Observable[A] = new Observable[A] {
+  def createWithCloseable[A](delegate: Observer[A] => Closeable): Observable[A] = new Observable[A] {
     override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate {
-      val subscription = new MutableSubscription
+      val subscription = new MutableCloseable
       subscription.set(delegate(new DelegateObserver[A](observer) with ConformingObserver[A] {
         override protected def close() = subscription.close()
       }))
@@ -452,7 +452,7 @@ object Observable {
   /**
    * Returns an empty $coll.
    */
-  def empty(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithSubscription {
+  def empty(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithCloseable {
     observer =>
       scheduler schedule observer.onCompleted()
   }
@@ -460,7 +460,7 @@ object Observable {
   /**
    * Returns a $coll that terminates with `error`.
    */
-  def raise(error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithSubscription {
+  def raise(error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithCloseable {
     observer =>
       scheduler schedule observer.onError(error)
   }
@@ -475,7 +475,7 @@ object Observable {
   /**
    * Returns an infinite $coll that produces a new value each `period`. The values produced are `0`, `1`, `2`, ...
    */
-  def interval(period: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithSubscription {
+  def interval(period: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithCloseable {
     observer =>
       var counter = 0
       scheduler.scheduleRecursiveAfter(period) {
@@ -489,7 +489,7 @@ object Observable {
   /**
    * Returns an $coll that produces a single value after `dueTime`. The value produced is `0`.
    */
-  def timer(dueTime: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithSubscription {
+  def timer(dueTime: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithCloseable {
     observer =>
       scheduler.scheduleAfter(dueTime) {
         observer.onNext(0)
@@ -499,9 +499,9 @@ object Observable {
 
 
   class IterableToObservableWrapper[+A](val iterable: Iterable[A]) {
-    def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Subscription = this.toObservable(scheduler).subscribe(observer)
+    def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Closeable = this.toObservable(scheduler).subscribe(observer)
 
-    def toObservable(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithSubscription {
+    def toObservable(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithCloseable {
       observer =>
         val it = iterable.iterator
         scheduler scheduleRecursive {
@@ -519,13 +519,13 @@ object Observable {
   implicit def iterableToObservableWrapper[A](iterable: Iterable[A]): IterableToObservableWrapper[A] = new IterableToObservableWrapper(iterable)
 
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
-    def merge: Observable[A] = createWithSubscription {
+    def merge: Observable[A] = createWithCloseable {
       observer =>
         val target = new DelegateObserver[A](observer) with SynchronizedObserver[A]
-        val generatorSubscription = new MutableSubscription
+        val generatorSubscription = new MutableCloseable
 
         val activeCount = new AtomicInteger(1)
-        val result = new CompositeSubscription(generatorSubscription)
+        val result = new CompositeCloseable(generatorSubscription)
 
         generatorSubscription.set(source.subscribe(
           onError = {
@@ -544,7 +544,7 @@ object Observable {
             value =>
               activeCount.incrementAndGet()
 
-              val holder = new MutableSubscription
+              val holder = new MutableCloseable
               result += holder
 
               holder.set(value.subscribe(new Observer[A] {
@@ -573,7 +573,7 @@ object Observable {
   implicit def nestedObservableWrapper[A](source: Observable[Observable[A]]) = new NestedObservableWrapper(source)
 
   class DematerializeObservableWrapper[A](source: Observable[Notification[A]]) {
-    def dematerialize: Observable[A] = createWithSubscription {
+    def dematerialize: Observable[A] = createWithCloseable {
       observer =>
         source.subscribe(onNext = _.accept(observer), onError = observer.onError, onCompleted = observer.onCompleted)
     }

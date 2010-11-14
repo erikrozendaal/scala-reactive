@@ -6,9 +6,9 @@ import org.specs.Specification
 import org.specs.mock.Mockito
 
 @RunWith(classOf[JUnitSuiteRunner])
-class SubscriptionTest extends Specification with JUnit with Mockito {
-  "BooleanSubscription" should {
-    val subject = new BooleanSubscription
+class CloseableTest extends Specification with JUnit with Mockito {
+  "BooleanCloseable" should {
+    val subject = new BooleanCloseable
     "not be closed initially" in {
       subject.closed must beFalse
     }
@@ -20,11 +20,11 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "ActionSubscription" should {
+  "ActionCloseable" should {
     "execute action once on close" in {
       var count = 0
 
-      val subject = new ActionSubscription(() => count += 1)
+      val subject = new ActionCloseable(() => count += 1)
 
       subject.close()
       count must be equalTo 1
@@ -34,10 +34,10 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "an open MutableSubscription" should {
-    val subject = new MutableSubscription
-    val delegate1 = mock[Subscription]
-    val delegate2 = mock[Subscription]
+  "an open MutableCloseable" should {
+    val subject = new MutableCloseable
+    val delegate1 = mock[Closeable]
+    val delegate2 = mock[Closeable]
 
     "close the current subscription when closed" in {
       subject.set(delegate1)
@@ -87,10 +87,10 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "a closed MutableSubscription" should {
-    val subject = new MutableSubscription
+  "a closed MutableCloseable" should {
+    val subject = new MutableCloseable
     subject.close()
-    val delegate = mock[Subscription]
+    val delegate = mock[Closeable]
 
     "close a new subscription when set" in {
       subject.set(delegate)
@@ -110,10 +110,10 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "an open CompositeSubscription" should {
-    val delegate1 = mock[Subscription]
-    val delegate2 = mock[Subscription]
-    val subject = new CompositeSubscription(delegate1, delegate2)
+  "an open CompositeCloseable" should {
+    val delegate1 = mock[Closeable]
+    val delegate2 = mock[Closeable]
+    val subject = new CompositeCloseable(delegate1, delegate2)
 
     "not close subscriptions that are added" in {
       there were noMoreCallsTo(delegate1)
@@ -128,7 +128,7 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
 
     "not close subscription that are removed but were not added" in {
-      val subscription = mock[Subscription]
+      val subscription = mock[Closeable]
 
       subject -= subscription
 
@@ -136,7 +136,7 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
 
     "close all contained subscriptions when cleared, but not close itself" in {
-      val subscription = mock[Subscription]
+      val subscription = mock[Closeable]
 
       subject.clear()
       subject += subscription
@@ -154,7 +154,7 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
 
     "not close subscriptions that are passed to remove when closed" in {
-      val subscription = mock[Subscription]
+      val subscription = mock[Closeable]
       subject.close()
 
       subject -= subscription
@@ -163,9 +163,9 @@ class SubscriptionTest extends Specification with JUnit with Mockito {
     }
   }
 
-  "a closed CompositeSubscription" should {
-    val subject = new CompositeSubscription
-    val delegate = mock[Subscription]
+  "a closed CompositeCloseable" should {
+    val subject = new CompositeCloseable
+    val delegate = mock[Closeable]
     subject.close()
 
     "close subscriptions that are added" in {

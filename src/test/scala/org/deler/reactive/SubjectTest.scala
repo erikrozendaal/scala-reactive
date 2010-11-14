@@ -11,7 +11,7 @@ import scala.collection._
 class SubjectTest extends Specification with JUnit with Mockito {
   val observer = mock[Observer[String]]
   val observer2 = mock[Observer[String]]
-  var subscription: Subscription = _
+  var subscription: Closeable = _
 
   var subject: Subject[String] = new BasicSubject[String]
 
