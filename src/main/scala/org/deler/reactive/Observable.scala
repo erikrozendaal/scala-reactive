@@ -122,8 +122,8 @@ trait Observable[+A] {
       this.subscribe(new DelegateObserver(observer) {
         override def onNext(value: A) {
           catching(classOf[Exception]) either predicate(value) match {
-            case Left(error) => observer.onError(error.asInstanceOf[Exception])
-            case Right(true) => observer.onNext(value)
+            case Left(error) => super.onError(error.asInstanceOf[Exception])
+            case Right(true) => super.onNext(value)
             case Right(false) =>
           }
         }
@@ -260,10 +260,10 @@ trait Observable[+A] {
         override def onNext(value: A) {
           if (count < n) {
             count += 1
-            observer.onNext(value)
+            super.onNext(value)
           }
           if (count >= n) {
-            observer.onCompleted()
+            super.onCompleted()
           }
         }
       })
@@ -386,12 +386,13 @@ trait Observable[+A] {
    */
   def subscribeOn(scheduler: Scheduler): Observable[A] = createWithCloseable {
     observer =>
-      val result = new MutableCloseable
-      scheduler schedule {
-        val subscription = this.subscribe(observer)
+      val scheduled = new MutableCloseable
+      val result = new MutableCloseable(scheduled)
 
-        result.set(new ScheduledCloseable(subscription, scheduler))
-      }
+      scheduled.set(scheduler schedule {
+        val subscription = this.subscribe(observer)
+        result clearAndSet new ScheduledCloseable(subscription, scheduler)
+      })
       result
   }
 
@@ -402,7 +403,7 @@ trait Observable[+A] {
    */
   def observeOn(scheduler: Scheduler): Observable[A] = createWithCloseable {
     observer =>
-      this.subscribe(new SchedulingObserver(observer, scheduler))
+      this.subscribe(new ScheduledObserver(observer, scheduler))
   }
 
   def synchronize: Observable[A] = createWithCloseable {
@@ -442,10 +443,20 @@ object Observable {
   def createWithCloseable[A](delegate: Observer[A] => Closeable): Observable[A] = new Observable[A] {
     override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate {
       val subscription = new MutableCloseable
-      subscription.set(delegate(new DelegateObserver[A](observer) with ConformingObserver[A] {
-        override protected def close() = subscription.close()
-      }))
-      subscription
+      val wrappedObserver = new DelegateObserver[A](observer) with ConformingObserver[A] {
+        override def onError(error: Exception) {
+          subscription.close()
+          super.onError(error)
+        }
+
+        override def onCompleted() {
+          subscription.close()
+          super.onCompleted()
+        }
+      }
+
+      subscription.set(delegate(wrappedObserver))
+      new CompositeCloseable(wrappedObserver, subscription)
     }
   }
 

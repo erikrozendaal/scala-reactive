@@ -40,13 +40,13 @@ class DelegateObserver[-A](delegate: Observer[A]) extends Observer[A] {
 
 /**
  * An observer that schedules all notifications to `delegate` on `scheduler`. Uses an internal queue to avoid
- * slowing down the source observable sequence.
+ * slowing down the source observable sequence. Ordering of notifications is preserved.
  *
- * This SchedulingObserver is thread-safe.
+ * This ScheduledObserver is thread-safe and serializes all notifications delivered to `delegate`.
  */
-class SchedulingObserver[A](delegate: Observer[A], scheduler: Scheduler) extends DelegateObserver(delegate) {
-  val queue = new LinkedBlockingQueue[Notification[A]]()
-  val size = new AtomicInteger(0)
+class ScheduledObserver[A](delegate: Observer[A], scheduler: Scheduler) extends DelegateObserver(delegate) {
+  private val queue = new LinkedBlockingQueue[Notification[A]]()
+  private val size = new AtomicInteger(0)
 
   override def onNext(value: A) = scheduleNotification(OnNext(value))
 
@@ -81,9 +81,44 @@ class SchedulingObserver[A](delegate: Observer[A], scheduler: Scheduler) extends
 }
 
 /**
+ * Mix-in trait that ensures the observer receives notifications conforming to the Observable protocol.
+ *
+ * This trait takes care that no more notifications are send after either `onError` or `onCompleted` occurred.
+ */
+trait ConformingObserver[-A] extends Observer[A] with Closeable {
+  @volatile private var closedOrCompleted = false
+
+  def close() {
+    closedOrCompleted = true
+  }
+
+  abstract override def onNext(value: A) {
+    if (closedOrCompleted) return
+    super.onNext(value)
+  }
+
+  abstract override def onError(error: Exception) {
+    if (closedOrCompleted) return
+    closedOrCompleted = true
+    super.onError(error);
+  }
+
+  abstract override def onCompleted() {
+    if (closedOrCompleted) return
+    closedOrCompleted = true
+    super.onCompleted()
+  }
+
+}
+
+/**
  * Mix-in trait that ensures every notification is synchronized.
  */
-trait SynchronizedObserver[-A] extends Observer[A] {
+trait SynchronizedObserver[-A] extends ConformingObserver[A] {
+  override def close() = synchronized {
+    super.close()
+  }
+
   abstract override def onNext(value: A) = synchronized {
     super.onNext(value)
   }
@@ -95,42 +130,4 @@ trait SynchronizedObserver[-A] extends Observer[A] {
   abstract override def onCompleted() = synchronized {
     super.onCompleted()
   }
-}
-
-/**
- * Mix-in trait that ensures the observer receives notifications conforming to the Observable protocol.
- *
- * This trait takes care that no more notifications are send after either `onError` or `onCompleted` occurred.
- *
- * The `close` method can be overridden to close the subscription to the underlying source when `onCompleted` or
- * `onError` is received.
- */
-trait ConformingObserver[-A] extends Observer[A] {
-  private var completed = false
-
-  /**
-   * Invoked when the first `onComplete` or `onError` notification is received. Used to close the subscription to the
-   * underlying source.
-   */
-  protected def close() {}
-
-  abstract override def onCompleted() {
-    if (completed) return
-    completed = true
-    close()
-    super.onCompleted()
-  }
-
-  abstract override def onError(error: Exception) {
-    if (completed) return
-    completed = true
-    close()
-    super.onError(error);
-  }
-
-  abstract override def onNext(value: A) {
-    if (completed) return
-    super.onNext(value)
-  }
-
 }

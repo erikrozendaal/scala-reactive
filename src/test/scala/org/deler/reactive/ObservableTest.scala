@@ -102,6 +102,20 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       notifications must be equalTo Seq(200 -> OnError(ex))
     }
 
+    "enfore observable contract (no notification after subscription is closed)" in {
+      val notifications = scheduler run {
+        Observable.create {
+          observer: Observer[String] =>
+            scheduler.scheduleAfter(new Duration(1000)) {
+              observer.onNext("ignored")
+            }
+            () => {}
+        }
+      }
+
+      notifications must beEmpty
+    }
+
     "close subscription after onCompleted" in {
       var closed = false
       Observable.create {
@@ -799,12 +813,12 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       observable.subscriptions must be equalTo Seq(201 -> 1001)
     }
 
-    "schedule unsubscribe when subscription is closed closed" in {
+    "not run scheduled subscription when cancelled" in {
       val observable = scheduler.createHotObservable(Seq())
 
       scheduler.run(observable.subscribeOn(scheduler), unsubscribeAt = new Instant(150))
 
-      observable.subscriptions must be equalTo Seq(201 -> 202)
+      observable.subscriptions must beEmpty
     }
   }
 
@@ -831,6 +845,15 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       Observable.value("value")(Scheduler.currentThread).observeOn(Scheduler.immediate).subscribe(_ => invoked = true)
 
       invoked must beTrue
+    }
+
+    "not send notifications when cancelled before scheduled delivery is run" in {
+      val observer = mock[Observer[Int]]
+
+      Observable(1, 2, 3).observeOn(scheduler).subscribe(observer).close()
+      scheduler.run()
+
+      there were noMoreCallsTo(observer)
     }
   }
 

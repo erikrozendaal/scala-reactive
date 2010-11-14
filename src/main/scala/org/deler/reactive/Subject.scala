@@ -65,20 +65,18 @@ trait Recorder[A] extends Observer[A] {
 
 class BasicSubject[A](scheduler: Scheduler = Scheduler.immediate)
         extends Dispatcher[A]
-                with ConformingObserver[A]
                 with SynchronizedObserver[A] {
   override def subscribe(observer: Observer[A]): Closeable = {
-    super.subscribe(new SchedulingObserver(observer, scheduler))
+    super.subscribe(new ScheduledObserver(observer, scheduler))
   }
 }
 
 class ReplaySubject[A](scheduler: Scheduler = Scheduler.currentThread)
         extends Dispatcher[A]
                 with Recorder[A]
-                with ConformingObserver[A]
                 with SynchronizedObserver[A] {
   override def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
-    val wrapped = new SchedulingObserver(observer, scheduler)
+    val wrapped = new ScheduledObserver(observer, scheduler)
     replay(wrapped)
     super.subscribe(wrapped)
   }
