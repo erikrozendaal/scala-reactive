@@ -149,6 +149,12 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       other.subscriptions must be equalTo Seq(200 -> 250)
     }
 
+    "not produce any value when other observable sequence produces value immediately" in {
+      val result = Observable.value("ignored").takeUntil(Observable.value("trigger")).toSeq
+
+      result must beEmpty
+    }
+
     "produce all source values when it completes before the other observable produces a value" in {
       val source = scheduler.createHotObservable(Seq(
         300 -> OnNext("first"),
