@@ -2,10 +2,16 @@ package org.deler.reactive
 
 import scala.collection._
 
+/**
+ * An object that is both an observer and an observable sequence.
+ */
 trait Subject[A] extends Observable[A] with Observer[A]
 
-trait Dispatcher[A] extends Subject[A] {
-  private val subscriptions = mutable.Set[SubjectSubscription]()
+/**
+ * Dispatches notifications to all subscribers.
+ */
+class Dispatcher[A] extends Subject[A] {
+  @volatile private var subscriptions = Set[SubjectSubscription]()
 
   def subscribe(observer: Observer[A]): Closeable = {
     new SubjectSubscription(observer)
@@ -17,12 +23,12 @@ trait Dispatcher[A] extends Subject[A] {
 
   override def onError(error: Exception) {
     dispatch(_.onError(error))
-    subscriptions.clear()
+    subscriptions = Set.empty
   }
 
   override def onCompleted() {
     dispatch(_.onCompleted())
-    subscriptions.clear()
+    subscriptions = Set.empty
   }
 
   private def dispatch(f: Observer[A] => Unit) {
@@ -30,55 +36,70 @@ trait Dispatcher[A] extends Subject[A] {
   }
 
   private class SubjectSubscription(val observer: Observer[A]) extends Closeable {
-    subscriptions += this
+    Dispatcher.this synchronized {
+      subscriptions += this
+    }
 
     def close {
-      subscriptions -= this
+      Dispatcher.this synchronized {
+        subscriptions -= this
+      }
     }
   }
 
 }
 
+/**
+ * Records all received notifications and provides support for replaying these notifications to an
+ * [[org.deler.reactive.Observer]].
+ */
 trait Recorder[A] extends Observer[A] {
-  private var values = immutable.Queue[Notification[A]]()
+  private var notifications = immutable.Queue[Notification[A]]()
 
   protected def replay(observer: Observer[A]) {
-    values foreach {_.accept(observer)}
+    notifications foreach {_.accept(observer)}
   }
 
   abstract override def onNext(value: A) {
-    values = values enqueue OnNext(value)
+    notifications = notifications enqueue OnNext(value)
     super.onNext(value)
   }
 
   abstract override def onCompleted() {
-    values = values enqueue OnCompleted
+    notifications = notifications enqueue OnCompleted
     super.onCompleted()
   }
 
   abstract override def onError(error: Exception) {
-    values = values enqueue OnError(error)
+    notifications = notifications enqueue OnError(error)
     super.onError(error)
   }
 
 }
 
+/**
+ * An object that is both an observer and an observable sequence.
+ */
 class BasicSubject[A](scheduler: Scheduler = Scheduler.immediate)
         extends Dispatcher[A]
                 with SynchronizedObserver[A] {
-  override def subscribe(observer: Observer[A]): Closeable = {
+  override def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
     super.subscribe(new ScheduledObserver(observer, scheduler))
   }
 }
 
+/**
+ * An object that is both an observer and an observable sequence and replays all past notifications to new subscribers.
+ */
 class ReplaySubject[A](scheduler: Scheduler = Scheduler.currentThread)
         extends Dispatcher[A]
                 with Recorder[A]
                 with SynchronizedObserver[A] {
   override def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
-    val wrapped = new ScheduledObserver(observer, scheduler)
-    replay(wrapped)
-    super.subscribe(wrapped)
+    synchronized {
+      val wrapped = new ScheduledObserver(observer, scheduler)
+      replay(wrapped)
+      super.subscribe(wrapped)
+    }
   }
-
 }
