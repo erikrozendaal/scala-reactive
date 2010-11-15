@@ -120,16 +120,7 @@ trait Observable[+A] {
   /**
    * A new observable that materializes each notification of this observable as a [[org.deler.reactive.Notification]].
    */
-  def materialize: Observable[Notification[A]] = createWithCloseable {
-    observer =>
-      this.conform.subscribe(new Observer[A] {
-        override def onCompleted() = observer.onNext(OnCompleted)
-
-        override def onError(error: Exception) = observer.onNext(OnError(error))
-
-        override def onNext(value: A) = observer.onNext(OnNext(value))
-      })
-  }
+  def materialize: Observable[Notification[A]] = Materialize(this)
 
   /**
    * A new observable that only contains the values from this observable which are instances of the specified type.
@@ -506,6 +497,26 @@ private case class Conform[+A](source: Observable[A]) extends Observable[A] {
   override def synchronize: Observable[A] = Synchronize(source)
 }
 
+private case class Filter[A](source: Observable[A], predicate: A => Boolean) extends Observable[A] {
+  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    val subscription = new MutableCloseable
+    subscription.set(source.conform.subscribe(new DelegateObserver(observer) {
+      override def onNext(value: A) {
+        catching(classOf[Exception]) either predicate(value) match {
+          case Left(error) =>
+            subscription.close()
+            super.onError(error.asInstanceOf[Exception])
+          case Right(true) => super.onNext(value)
+          case Right(false) =>
+        }
+      }
+    }))
+    subscription
+  }
+
+  override def filter(q: A => Boolean): Observable[A] = source.filter(value => predicate(value) && q(value))
+}
+
 private case class Map[A, B](source: Observable[A], f: A => B) extends Observable[B] {
   def subscribe(observer: Observer[B]): Closeable = CurrentThreadScheduler runImmediate {
     val subscription = new MutableCloseable
@@ -530,24 +541,16 @@ private case class Map[A, B](source: Observable[A], f: A => B) extends Observabl
   override def map[C](g: B => C): Observable[C] = source.map(f andThen g)
 }
 
-private case class Filter[A](source: Observable[A], predicate: A => Boolean) extends Observable[A] {
-  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
-    val subscription = new MutableCloseable
-    subscription.set(source.conform.subscribe(new DelegateObserver(observer) {
-      override def onNext(value: A) {
-        catching(classOf[Exception]) either predicate(value) match {
-          case Left(error) =>
-            subscription.close()
-            super.onError(error.asInstanceOf[Exception])
-          case Right(true) => super.onNext(value)
-          case Right(false) =>
-        }
-      }
-    }))
-    subscription
-  }
+private case class Materialize[A](source: Observable[A]) extends Observable[Notification[A]] {
+  def subscribe(observer: Observer[Notification[A]]): Closeable = CurrentThreadScheduler runImmediate {
+    source.conform.subscribe(new Observer[A] {
+      override def onCompleted() = observer.onNext(OnCompleted)
 
-  override def filter(q: A => Boolean): Observable[A] = source.filter(value => predicate(value) && q(value))
+      override def onError(error: Exception) = observer.onNext(OnError(error))
+
+      override def onNext(value: A) = observer.onNext(OnNext(value))
+    })
+  }
 }
 
 private case class Repeat[+A](source: Observable[A]) extends Observable[A] {
