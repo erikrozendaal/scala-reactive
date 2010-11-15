@@ -79,18 +79,7 @@ trait Observable[+A] {
   /**
    * A new observable only containing the values from this observable for which the predicate is satisfied.
    */
-  def filter(predicate: A => Boolean): Observable[A] = createWithCloseable {
-    observer =>
-      this.subscribe(new DelegateObserver(observer) {
-        override def onNext(value: A) {
-          catching(classOf[Exception]) either predicate(value) match {
-            case Left(error) => super.onError(error.asInstanceOf[Exception])
-            case Right(true) => super.onNext(value)
-            case Right(false) =>
-          }
-        }
-      })
-  }
+  def filter(predicate: A => Boolean): Observable[A] = Filter(this, predicate)
 
   /**
    * Returns the first value in this $coll.
@@ -126,21 +115,7 @@ trait Observable[+A] {
   /**
    * A new observable defined by applying a function to all values produced by this observable.
    */
-  def map[B](f: A => B): Observable[B] = createWithCloseable {
-    observer =>
-      this.subscribe(new Observer[A] {
-        override def onNext(value: A) {
-          catching(classOf[Exception]) either f(value) match {
-            case Left(error) => observer.onError(error.asInstanceOf[Exception])
-            case Right(mapped) => observer.onNext(mapped)
-          }
-        }
-
-        override def onError(error: Exception) = observer.onError(error)
-
-        override def onCompleted() = observer.onCompleted()
-      })
-  }
+  def map[B](f: A => B): Observable[B] = Map(this, f)
 
   /**
    * A new observable that materializes each notification of this observable as a [[org.deler.reactive.Notification]].
@@ -529,6 +504,50 @@ private case class Conform[+A](source: Observable[A]) extends Observable[A] {
   override def conform: Observable[A] = this
 
   override def synchronize: Observable[A] = Synchronize(source)
+}
+
+private case class Map[A, B](source: Observable[A], f: A => B) extends Observable[B] {
+  def subscribe(observer: Observer[B]): Closeable = CurrentThreadScheduler runImmediate {
+    val subscription = new MutableCloseable
+    subscription.set(source.conform.subscribe(new Observer[A] {
+      override def onNext(value: A) {
+        catching(classOf[Exception]) either f(value) match {
+          case Left(error) =>
+            subscription.close()
+            observer.onError(error.asInstanceOf[Exception])
+          case Right(mapped) =>
+            observer.onNext(mapped)
+        }
+      }
+
+      override def onError(error: Exception) = observer.onError(error)
+
+      override def onCompleted() = observer.onCompleted()
+    }))
+    subscription
+  }
+
+  override def map[C](g: B => C): Observable[C] = source.map(f andThen g)
+}
+
+private case class Filter[A](source: Observable[A], predicate: A => Boolean) extends Observable[A] {
+  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    val subscription = new MutableCloseable
+    subscription.set(source.conform.subscribe(new DelegateObserver(observer) {
+      override def onNext(value: A) {
+        catching(classOf[Exception]) either predicate(value) match {
+          case Left(error) =>
+            subscription.close()
+            super.onError(error.asInstanceOf[Exception])
+          case Right(true) => super.onNext(value)
+          case Right(false) =>
+        }
+      }
+    }))
+    subscription
+  }
+
+  override def filter(q: A => Boolean): Observable[A] = source.filter(value => predicate(value) && q(value))
 }
 
 private case class Repeat[+A](source: Observable[A]) extends Observable[A] {
