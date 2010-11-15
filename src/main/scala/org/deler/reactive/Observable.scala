@@ -259,19 +259,9 @@ trait Observable[+A] {
   }
 
   /**
-   * Switches to `source` when `this` terminates with an error.
+   * Switches to `other` when `this` terminates with an error.
    */
-  def rescue[B >: A](source: Observable[B]): Observable[B] = createWithCloseable {
-    observer =>
-      val subscription = new MutableCloseable
-      val result = new MutableCloseable(subscription)
-
-      subscription.set(this.subscribe(new DelegateObserver(observer) {
-        override def onError(error: Exception) = result clearAndSet {source.subscribe(observer)}
-      }))
-
-      result
-  }
+  def rescue[B >: A](other: Observable[B]): Observable[B] = Rescue(this, other)
 
   /**
    * Asynchronously subscribe (and unsubscribe) observers on `scheduler`. The subscription is always completed
@@ -583,6 +573,19 @@ private case class RepeatN[+A](source: Observable[A], n: Int) extends Observable
   override def repeat: Observable[A] = source.repeat
 
   override def repeat(n: Int): Observable[A] = source.repeat(this.n * n)
+}
+
+private case class Rescue[A, B >: A](source: Observable[A], other: Observable[B]) extends Observable[B] {
+  def subscribe(observer: Observer[B]): Closeable = CurrentThreadScheduler runImmediate {
+    val subscription = new MutableCloseable
+    val result = new MutableCloseable(subscription)
+
+    subscription.set(source.conform.subscribe(new DelegateObserver(observer) {
+      override def onError(error: Exception) = result clearAndSet {other.conform.subscribe(observer)}
+    }))
+
+    result
+  }
 }
 
 private case class Take[+A](source: Observable[A], n: Int) extends Observable[A] {
