@@ -272,6 +272,17 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "conforming and synchronized observables" should {
+    "obey relationships" in {
+      val observable = Observable.value("unused")
+
+      observable.conform.conform must be equalTo observable.conform
+      observable.conform.synchronize must be equalTo observable.synchronize
+      observable.synchronize.conform must be equalTo observable.synchronize
+      observable.synchronize.synchronize must be equalTo observable.synchronize
+    }
+  }
+
   "Iterable.toObservable" should {
     implicit val defaultToTestScheduler = scheduler
 
