@@ -273,7 +273,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
   }
 
   "conforming and synchronized observables" should {
-    "obey relationships" in {
+    "obey algebraic relationships" in {
       val observable = Observable.value("unused")
 
       observable.conform.conform must be equalTo observable.conform
@@ -699,6 +699,22 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   "repeated observables" should {
     implicit val defaultToTestScheduler = scheduler
+
+    "obey algebraic relationships" in {
+      val observable = Observable.value("ignored")
+
+      observable.repeat.repeat must be equalTo observable.repeat
+      observable.repeat.repeat(1) must be equalTo observable.repeat
+      observable.repeat.repeat(0) must be equalTo observable.repeat(0)
+      observable.repeat(1).repeat must be equalTo observable.repeat
+      observable.repeat(2).repeat(3) must be equalTo observable.repeat(6)
+    }
+
+    "fail on illegal argument" in {
+      val observable = Observable.value("ignored")
+
+      observable.repeat(-1) must throwA[IllegalArgumentException]
+    }
 
     "not publish anything when source is empty" in {
       val notifications = scheduler.run {Observable.empty.repeat}

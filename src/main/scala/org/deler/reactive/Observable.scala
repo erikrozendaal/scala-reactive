@@ -176,40 +176,12 @@ trait Observable[+A] {
   /**
    * Repeats the source observable indefinitely.
    */
-  def repeat: Observable[A] = createWithCloseable {
-    observer =>
-      val result = new MutableCloseable
-      def run() {
-        result clearAndSet this.subscribe(new DelegateObserver(observer) {
-          override def onCompleted() = run()
-        })
-      }
-
-      run()
-      result
-  }
+  def repeat: Observable[A] = Repeat(this)
 
   /**
    * Repeats the source observable `n` times.
    */
-  def repeat(n: Int): Observable[A] = createWithCloseable {
-    observer =>
-      val result = new MutableCloseable
-      def run(count: Int) {
-        if (count >= n) {
-          observer.onCompleted()
-        } else {
-          result clearAndSet this.subscribe(new DelegateObserver(observer) {
-            override def onCompleted() {
-              run(count + 1)
-            }
-          })
-        }
-      }
-
-      run(0)
-      result
-  }
+  def repeat(n: Int): Observable[A] = RepeatN(this, n)
 
   /**
    * A new observable that only produces up to `n` values from this observable and then completes.
@@ -605,6 +577,50 @@ private case class Conform[+A](source: Observable[A]) extends Observable[A] {
   override def conform: Observable[A] = this
 
   override def synchronize: Observable[A] = Synchronize(source)
+}
+
+private case class Repeat[+A](source: Observable[A]) extends Observable[A] {
+  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    val result = new MutableCloseable
+    def run() {
+      result clearAndSet source.conform.subscribe(new DelegateObserver(observer) {
+        override def onCompleted() = run()
+      })
+    }
+
+    run()
+    result
+  }
+
+  override def repeat: Observable[A] = this
+
+  override def repeat(n: Int): Observable[A] = if (n > 0) this else source.repeat(n)
+}
+
+private case class RepeatN[+A](source: Observable[A], n: Int) extends Observable[A] {
+  require(n >= 0, "n >= 0")
+
+  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    val result = new MutableCloseable
+    def run(count: Int) {
+      if (count >= n) {
+        observer.onCompleted()
+      } else {
+        result clearAndSet source.conform.subscribe(new DelegateObserver(observer) {
+          override def onCompleted() {
+            run(count + 1)
+          }
+        })
+      }
+    }
+
+    run(0)
+    result
+  }
+
+  override def repeat: Observable[A] = source.repeat
+
+  override def repeat(n: Int): Observable[A] = source.repeat(this.n * n)
 }
 
 private case class Synchronize[+A](source: Observable[A]) extends Observable[A] {
