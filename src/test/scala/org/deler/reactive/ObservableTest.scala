@@ -573,6 +573,14 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
     val sequence = Observable(1, 2, 3, 4)
 
+    "obey algebraic relationships" in {
+      val observable = sequence
+
+      observable.take(-1) must throwA[IllegalArgumentException]
+      observable.take(10).take(3) must be equalTo observable.take(3)
+      observable.take(123).take(2332) must be equalTo observable.take(123)
+    }
+
     "stop immediately when n is 0" in {
       val notifications = scheduler.run(sequence.take(0))
 

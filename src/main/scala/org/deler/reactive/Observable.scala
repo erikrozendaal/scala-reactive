@@ -186,22 +186,7 @@ trait Observable[+A] {
   /**
    * A new observable that only produces up to `n` values from this observable and then completes.
    */
-  def take(n: Int): Observable[A] = createWithCloseable {
-    observer =>
-      this.subscribe(new DelegateObserver(observer) {
-        var count: Int = 0
-
-        override def onNext(value: A) {
-          if (count < n) {
-            count += 1
-            super.onNext(value)
-          }
-          if (count >= n) {
-            super.onCompleted()
-          }
-        }
-      })
-  }
+  def take(n: Int): Observable[A] = Take(this, n)
 
   /**
    * Takes values from this $coll until the `other` $coll produces a value.
@@ -621,6 +606,31 @@ private case class RepeatN[+A](source: Observable[A], n: Int) extends Observable
   override def repeat: Observable[A] = source.repeat
 
   override def repeat(n: Int): Observable[A] = source.repeat(this.n * n)
+}
+
+private case class Take[+A](source: Observable[A], n: Int) extends Observable[A] {
+  require(n >= 0, "n >= 0")
+
+  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    val subscription = new MutableCloseable
+    subscription.set(source.conform.subscribe(new DelegateObserver(observer) {
+      var count: Int = 0
+
+      override def onNext(value: A) {
+        if (count < n) {
+          count += 1
+          super.onNext(value)
+        }
+        if (count >= n) {
+          subscription.close()
+          super.onCompleted()
+        }
+      }
+    }))
+    subscription
+  }
+
+  override def take(n: Int) = source.take(this.n.min(n))
 }
 
 private case class Synchronize[+A](source: Observable[A]) extends Observable[A] {
