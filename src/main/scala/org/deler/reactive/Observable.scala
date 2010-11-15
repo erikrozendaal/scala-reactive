@@ -61,35 +61,7 @@ trait Observable[+A] {
   /**
    * Returns the first $coll to produce a notification.
    */
-  def amb[B >: A](other: Observable[B]): Observable[B] = createWithCloseable {
-    observer =>
-      val Unknown = 0
-      val Left = 1
-      val Right = 2
-
-      val leftOrRight = new AtomicInteger(Unknown)
-
-      val leftSubscription = new MutableCloseable
-      val rightSubscription = new MutableCloseable
-      val result = new CompositeCloseable(leftSubscription, rightSubscription)
-
-      leftSubscription.set(this.materialize subscribe {
-        notification =>
-          if (leftOrRight.compareAndSet(Unknown, Left))
-            result -= rightSubscription
-          if (leftOrRight.get == Left)
-            notification.accept(observer)
-      })
-      rightSubscription.set(other.materialize subscribe {
-        notification =>
-          if (leftOrRight.compareAndSet(Unknown, Right))
-            result -= leftSubscription
-          if (leftOrRight.get == Right)
-            notification.accept(observer)
-      })
-
-      result
-  }
+  def amb[B >: A](that: Observable[B]): Observable[B] = Ambiguous(this, that)
 
   /**
    * A new observable defined by applying a partial function to all values produced by this observable on which the
@@ -175,7 +147,7 @@ trait Observable[+A] {
    */
   def materialize: Observable[Notification[A]] = createWithCloseable {
     observer =>
-      this.subscribe(new Observer[A] {
+      this.conform.subscribe(new Observer[A] {
         override def onCompleted() = observer.onNext(OnCompleted)
 
         override def onError(error: Exception) = observer.onNext(OnError(error))
@@ -565,6 +537,37 @@ object Observable {
 
   implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
 
+}
+
+private case class Ambiguous[A, B >: A](left: Observable[A], right: Observable[B]) extends Observable[B] {
+  val Unknown = 0
+  val Left = 1
+  val Right = 2
+
+  def subscribe(observer: Observer[B]): Closeable = CurrentThreadScheduler runImmediate {
+    val leftOrRight = new AtomicInteger(Unknown)
+
+    val leftSubscription = new MutableCloseable
+    val rightSubscription = new MutableCloseable
+    val result = new CompositeCloseable(leftSubscription, rightSubscription)
+
+    leftSubscription.set(left.materialize subscribe {
+      notification =>
+        if (leftOrRight.compareAndSet(Unknown, Left))
+          result -= rightSubscription
+        if (leftOrRight.get == Left)
+          notification.accept(observer)
+    })
+    rightSubscription.set(right.materialize subscribe {
+      notification =>
+        if (leftOrRight.compareAndSet(Unknown, Right))
+          result -= leftSubscription
+        if (leftOrRight.get == Right)
+          notification.accept(observer)
+    })
+
+    result
+  }
 }
 
 private case class Concat[A, B >: A](left: Observable[A], right: Observable[B]) extends Observable[B] {
