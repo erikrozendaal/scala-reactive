@@ -56,17 +56,7 @@ trait Observable[+A] {
   /**
    * Appends `that` observable to this observable.
    */
-  def ++[B >: A](that: Observable[B]): Observable[B] = createWithCloseable {
-    observer =>
-      val subscription = new MutableCloseable
-      val result = new MutableCloseable(subscription)
-
-      subscription.set(this.subscribe(new DelegateObserver(observer) {
-        override def onCompleted() = result clearAndSet {that.subscribe(observer)}
-      }))
-
-      result
-  }
+  def ++[B >: A](that: Observable[B]): Observable[B] = Concat(this, that)
 
   /**
    * Returns the first $coll to produce a notification.
@@ -575,6 +565,19 @@ object Observable {
 
   implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
 
+}
+
+private case class Concat[A, B >: A](left: Observable[A], right: Observable[B]) extends Observable[B] {
+  def subscribe(observer: Observer[B]): Closeable = CurrentThreadScheduler runImmediate {
+    val subscription = new MutableCloseable
+    val result = new MutableCloseable(subscription)
+
+    subscription.set(left.conform.subscribe(new DelegateObserver(observer) {
+      override def onCompleted() = result clearAndSet {right.conform.subscribe(observer)}
+    }))
+
+    result
+  }
 }
 
 private case class Conform[+A](source: Observable[A]) extends Observable[A] {

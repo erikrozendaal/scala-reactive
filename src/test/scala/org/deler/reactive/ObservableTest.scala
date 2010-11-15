@@ -624,11 +624,13 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "should subscribe to second when first completes" in {
       val first = scheduler.createHotObservable(Seq(
         300 -> OnNext("first"),
-        400 -> OnCompleted))
+        400 -> OnCompleted,
+        450 -> OnNext("illegal")))
       val second = scheduler.createHotObservable(Seq(
         399 -> OnNext("early"),
         400 -> OnNext("second"),
-        500 -> OnCompleted))
+        500 -> OnCompleted,
+        600 -> OnNext("illegal")))
 
       val notifications = scheduler run {first ++ second}
 
