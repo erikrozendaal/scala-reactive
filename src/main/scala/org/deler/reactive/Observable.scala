@@ -272,22 +272,20 @@ trait Observable[+A] {
   /**
    * Takes values from this $coll until the `other` $coll produces a value.
    */
-  def takeUntil(other: Observable[Any]): Observable[A] = createWithCloseable {
+  def takeUntil(other: Observable[Any]): Observable[A] = createSynchronizedWithCloseable {
     observer =>
-      val target = new DelegateObserver[A](observer) with SynchronizedObserver[A]
-
       val otherSubscription = new MutableCloseable
       val result = new CompositeCloseable(otherSubscription)
 
       otherSubscription.set(other.subscribe(new Observer[Any] {
         override def onNext(value: Any) {
           result.close()
-          target.onCompleted()
+          observer.onCompleted()
         }
 
         override def onError(error: Exception) {
           result.close()
-          target.onError(error)
+          observer.onError(error)
         }
 
         override def onCompleted() {
@@ -295,7 +293,7 @@ trait Observable[+A] {
         }
       }))
 
-      result += this.subscribe(target)
+      result += this.subscribe(observer)
       result
   }
 
@@ -405,10 +403,9 @@ trait Observable[+A] {
       this.subscribe(new ScheduledObserver(observer, scheduler))
   }
 
-  def synchronize: Observable[A] = createWithCloseable {
-    observer =>
-      this.subscribe(new DelegateObserver[A](observer) with SynchronizedObserver[A])
-  }
+  def conform: Observable[A] = Conform(this)
+
+  def synchronize: Observable[A] = Synchronize(this)
 }
 
 /**
@@ -439,25 +436,13 @@ object Observable {
       new ActionCloseable(unsubscribe)
   }
 
-  def createWithCloseable[A](delegate: Observer[A] => Closeable): Observable[A] = new Observable[A] {
-    override def subscribe(observer: Observer[A]) = CurrentThreadScheduler runImmediate {
-      val subscription = new MutableCloseable
-      val wrappedObserver = new DelegateObserver[A](observer) with ConformingObserver[A] {
-        override def onError(error: Exception) {
-          subscription.close()
-          super.onError(error)
-        }
+  def createWithCloseable[A](delegate: Observer[A] => Closeable): Observable[A] = Conform(new Observable[A] {
+    override def subscribe(observer: Observer[A]) = delegate(observer)
+  })
 
-        override def onCompleted() {
-          subscription.close()
-          super.onCompleted()
-        }
-      }
-
-      subscription.set(delegate(wrappedObserver))
-      new CompositeCloseable(wrappedObserver, subscription)
-    }
-  }
+  def createSynchronizedWithCloseable[A](delegate: Observer[A] => Closeable): Observable[A] = Synchronize(new Observable[A] {
+    override def subscribe(observer: Observer[A]) = delegate(observer)
+  })
 
   /**
    * Returns an empty $coll.
@@ -529,9 +514,8 @@ object Observable {
   implicit def iterableToObservableWrapper[A](iterable: Iterable[A]): IterableToObservableWrapper[A] = new IterableToObservableWrapper(iterable)
 
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
-    def merge: Observable[A] = createWithCloseable {
+    def merge: Observable[A] = createSynchronizedWithCloseable {
       observer =>
-        val target = new DelegateObserver[A](observer) with SynchronizedObserver[A]
         val generatorSubscription = new MutableCloseable
 
         val activeCount = new AtomicInteger(1)
@@ -541,13 +525,13 @@ object Observable {
           onError = {
             error =>
               result.close()
-              target.onError(error)
+              observer.onError(error)
           },
           onCompleted = {
             () =>
               result -= generatorSubscription
               if (activeCount.decrementAndGet() == 0) {
-                target.onCompleted()
+                observer.onCompleted()
               }
           },
           onNext = {
@@ -558,20 +542,20 @@ object Observable {
               result += holder
 
               holder.set(value.subscribe(new Observer[A] {
-                override def onCompleted() {
-                  result -= holder
-                  if (activeCount.decrementAndGet() == 0) {
-                    target.onCompleted()
-                  }
+                override def onNext(value: A) {
+                  observer.onNext(value)
                 }
 
                 override def onError(error: Exception) {
                   result.close()
-                  target.onError(error)
+                  observer.onError(error)
                 }
 
-                override def onNext(value: A) {
-                  target.onNext(value)
+                override def onCompleted() {
+                  result -= holder
+                  if (activeCount.decrementAndGet() == 0) {
+                    observer.onCompleted()
+                  }
                 }
               }))
           }))
@@ -591,4 +575,52 @@ object Observable {
 
   implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
 
+}
+
+private case class Conform[+A](source: Observable[A]) extends Observable[A] {
+  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    val subscription = new MutableCloseable
+    val target = new DelegateObserver[A](observer) with ConformedObserver[A] {
+      override def onError(error: Exception) {
+        subscription.close()
+        super.onError(error)
+      }
+
+      override def onCompleted() {
+        subscription.close()
+        super.onCompleted()
+      }
+    }
+
+    subscription.set(source.subscribe(target))
+    new CompositeCloseable(subscription, target)
+  }
+
+  override def conform: Observable[A] = this
+
+  override def synchronize: Observable[A] = Synchronize(source)
+}
+
+private case class Synchronize[+A](source: Observable[A]) extends Observable[A] {
+  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    val subscription = new MutableCloseable
+    val target = new DelegateObserver[A](observer) with SynchronizedObserver[A] {
+      override def onError(error: Exception) = synchronized {
+        subscription.close()
+        super.onError(error)
+      }
+
+      override def onCompleted() = synchronized {
+        subscription.close()
+        super.onCompleted()
+      }
+    }
+
+    subscription.set(source.subscribe(target))
+    new CompositeCloseable(subscription, target)
+  }
+
+  override def conform: Observable[A] = this
+
+  override def synchronize: Observable[A] = this
 }
