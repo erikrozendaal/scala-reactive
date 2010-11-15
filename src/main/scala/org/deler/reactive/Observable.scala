@@ -191,30 +191,7 @@ trait Observable[+A] {
   /**
    * Takes values from this $coll until the `other` $coll produces a value.
    */
-  def takeUntil(other: Observable[Any]): Observable[A] = createSynchronizedWithCloseable {
-    observer =>
-      val otherSubscription = new MutableCloseable
-      val result = new CompositeCloseable(otherSubscription)
-
-      otherSubscription.set(other.subscribe(new Observer[Any] {
-        override def onNext(value: Any) {
-          result.close()
-          observer.onCompleted()
-        }
-
-        override def onError(error: Exception) {
-          result.close()
-          observer.onError(error)
-        }
-
-        override def onCompleted() {
-          result -= otherSubscription
-        }
-      }))
-
-      result += this.subscribe(observer)
-      result
-  }
+  def takeUntil(other: Observable[Any]): Observable[A] = TakeUntil(this, other)
 
   /**
    * Returns an $coll that produces values from this $coll until `dueTime`, when it raises a
@@ -631,6 +608,42 @@ private case class Take[+A](source: Observable[A], n: Int) extends Observable[A]
   }
 
   override def take(n: Int) = source.take(this.n.min(n))
+}
+
+private case class TakeUntil[+A](source: Observable[A], other: Observable[Any]) extends Observable[A] {
+  def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    val otherSubscription = new MutableCloseable
+    val result = new CompositeCloseable(otherSubscription)
+
+    otherSubscription.set(other.subscribe(new Observer[Any] {
+      override def onNext(value: Any) {
+        result.close()
+        observer.onCompleted()
+      }
+
+      override def onError(error: Exception) {
+        result.close()
+        observer.onError(error)
+      }
+
+      override def onCompleted() {
+        result -= otherSubscription
+      }
+    }))
+
+    result += source.conform.subscribe(new DelegateObserver(observer) {
+      override def onError(error: Exception) {
+        otherSubscription.close()
+        super.onError(error)
+      }
+
+      override def onCompleted() {
+        otherSubscription.close()
+        super.onCompleted()
+      }
+    })
+    result
+  }
 }
 
 private case class Synchronize[+A](source: Observable[A]) extends Observable[A] {

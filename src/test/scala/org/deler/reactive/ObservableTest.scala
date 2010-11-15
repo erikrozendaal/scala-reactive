@@ -159,7 +159,8 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val source = scheduler.createHotObservable(Seq(
         300 -> OnNext("first"),
         320 -> OnNext("second"),
-        350 -> OnCompleted))
+        350 -> OnCompleted,
+        375 -> OnNext("illegal")))
       val other = scheduler.createHotObservable(Seq(400 -> OnNext("trigger")))
 
       val notifications = scheduler.run(source.takeUntil(other))
