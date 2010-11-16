@@ -427,6 +427,7 @@ object Observable {
 
   implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
 
+  implicit private def observableToConformingObservable[A](source: Observable[A]): ConformingObservable[A] = source.conform.asInstanceOf[ConformingObservable[A]]
 }
 
 private trait ConformingObservable[+A] extends Observable[A] {
@@ -518,13 +519,14 @@ private case class Ambiguous[A, B >: A](left: Observable[A], right: Observable[B
   }
 }
 
-private case class Concat[A, B >: A](left: Observable[A], right: Observable[B]) extends BaseObservable[B] with ConformingObservable[B] {
+private case class Concat[A, B >: A](left: ConformingObservable[A], right: ConformingObservable[B])
+        extends BaseObservable[B] with ConformingObservable[B] {
   def doSubscribe(observer: Observer[B]): Closeable = {
     val subscription = new MutableCloseable
     val result = new MutableCloseable(subscription)
 
-    subscription.set(left.conform.subscribe(new DelegateObserver(observer) {
-      override def onCompleted() = result clearAndSet {right.conform.subscribe(observer)}
+    subscription.set(left.subscribe(new DelegateObserver(observer) {
+      override def onCompleted() = result clearAndSet {right.subscribe(observer)}
     }))
 
     result
@@ -537,10 +539,11 @@ private case class Conform[+A](source: Observable[A]) extends ConformedObservabl
   override def synchronize: Observable[A] = source.synchronize
 }
 
-private case class Filter[A](source: Observable[A], predicate: A => Boolean) extends BaseObservable[A] with ConformingObservable[A] {
+private case class Filter[A](source: ConformingObservable[A], predicate: A => Boolean)
+        extends BaseObservable[A] with ConformingObservable[A] {
   def doSubscribe(observer: Observer[A]): Closeable = {
     val subscription = new MutableCloseable
-    subscription.set(source.conform.subscribe(new DelegateObserver(observer) {
+    subscription.set(source.subscribe(new DelegateObserver(observer) {
       override def onNext(value: A) {
         catching(classOf[Exception]) either predicate(value) match {
           case Left(error) =>
@@ -557,10 +560,11 @@ private case class Filter[A](source: Observable[A], predicate: A => Boolean) ext
   override def filter(q: A => Boolean): Observable[A] = source.filter(value => predicate(value) && q(value))
 }
 
-private case class Map[A, B](source: Observable[A], f: A => B) extends BaseObservable[B] with ConformingObservable[B] {
+private case class Map[A, B](source: ConformingObservable[A], f: A => B)
+        extends BaseObservable[B] with ConformingObservable[B] {
   def doSubscribe(observer: Observer[B]): Closeable = {
     val subscription = new MutableCloseable
-    subscription.set(source.conform.subscribe(new Observer[A] {
+    subscription.set(source.subscribe(new Observer[A] {
       override def onNext(value: A) {
         catching(classOf[Exception]) either f(value) match {
           case Left(error) =>
@@ -581,9 +585,10 @@ private case class Map[A, B](source: Observable[A], f: A => B) extends BaseObser
   override def map[C](g: B => C): Observable[C] = source.map(f andThen g)
 }
 
-private case class Materialize[A](source: Observable[A]) extends BaseObservable[Notification[A]] with ConformingObservable[Notification[A]] {
+private case class Materialize[A](source: ConformingObservable[A])
+        extends BaseObservable[Notification[A]] with ConformingObservable[Notification[A]] {
   def doSubscribe(observer: Observer[Notification[A]]): Closeable = {
-    source.conform.subscribe(new Observer[A] {
+    source.subscribe(new Observer[A] {
       override def onCompleted() = observer.onNext(OnCompleted)
 
       override def onError(error: Exception) = observer.onNext(OnError(error))
@@ -593,11 +598,11 @@ private case class Materialize[A](source: Observable[A]) extends BaseObservable[
   }
 }
 
-private case class Repeat[+A](source: Observable[A]) extends BaseObservable[A] with ConformingObservable[A] {
+private case class Repeat[+A](source: ConformingObservable[A]) extends BaseObservable[A] with ConformingObservable[A] {
   def doSubscribe(observer: Observer[A]): Closeable = {
     val result = new MutableCloseable
     def run() {
-      result clearAndSet source.conform.subscribe(new DelegateObserver(observer) {
+      result clearAndSet source.subscribe(new DelegateObserver(observer) {
         override def onCompleted() = run()
       })
     }
@@ -608,10 +613,11 @@ private case class Repeat[+A](source: Observable[A]) extends BaseObservable[A] w
 
   override def repeat: Observable[A] = this
 
-  override def repeat(n: Int): Observable[A] = if (n > 0) this else source.repeat(n)
+  override def repeat(n: Int): Observable[A] = if (n > 0) this else RepeatN(source, n)
 }
 
-private case class RepeatN[+A](source: Observable[A], n: Int) extends BaseObservable[A] with ConformingObservable[A] {
+private case class RepeatN[+A](source: ConformingObservable[A], n: Int)
+        extends BaseObservable[A] with ConformingObservable[A] {
   require(n >= 0, "n >= 0")
 
   def doSubscribe(observer: Observer[A]): Closeable = {
@@ -620,7 +626,7 @@ private case class RepeatN[+A](source: Observable[A], n: Int) extends BaseObserv
       if (count >= n) {
         observer.onCompleted()
       } else {
-        result clearAndSet source.conform.subscribe(new DelegateObserver(observer) {
+        result clearAndSet source.subscribe(new DelegateObserver(observer) {
           override def onCompleted() {
             run(count + 1)
           }
@@ -632,30 +638,32 @@ private case class RepeatN[+A](source: Observable[A], n: Int) extends BaseObserv
     result
   }
 
-  override def repeat: Observable[A] = source.repeat
+  override def repeat: Observable[A] = Repeat(source)
 
-  override def repeat(n: Int): Observable[A] = source.repeat(this.n * n)
+  override def repeat(n: Int): Observable[A] = RepeatN(source, this.n * n)
 }
 
-private case class Rescue[A, B >: A](source: Observable[A], other: Observable[B]) extends BaseObservable[B] with ConformingObservable[B] {
+private case class Rescue[A, B >: A](source: ConformingObservable[A], other: ConformingObservable[B])
+        extends BaseObservable[B] with ConformingObservable[B] {
   def doSubscribe(observer: Observer[B]): Closeable = {
     val subscription = new MutableCloseable
     val result = new MutableCloseable(subscription)
 
-    subscription.set(source.conform.subscribe(new DelegateObserver(observer) {
-      override def onError(error: Exception) = result clearAndSet {other.conform.subscribe(observer)}
+    subscription.set(source.subscribe(new DelegateObserver(observer) {
+      override def onError(error: Exception) = result clearAndSet {other.subscribe(observer)}
     }))
 
     result
   }
 }
 
-private case class Take[+A](source: Observable[A], n: Int) extends BaseObservable[A] with ConformingObservable[A] {
+private case class Take[+A](source: ConformingObservable[A], n: Int)
+        extends BaseObservable[A] with ConformingObservable[A] {
   require(n >= 0, "n >= 0")
 
   def doSubscribe(observer: Observer[A]): Closeable = {
     val subscription = new MutableCloseable
-    subscription.set(source.conform.subscribe(new DelegateObserver(observer) {
+    subscription.set(source.subscribe(new DelegateObserver(observer) {
       var count: Int = 0
 
       override def onNext(value: A) {
@@ -672,7 +680,7 @@ private case class Take[+A](source: Observable[A], n: Int) extends BaseObservabl
     subscription
   }
 
-  override def take(n: Int) = source.take(this.n.min(n))
+  override def take(n: Int) = Take(source, this.n.min(n))
 }
 
 private case class TakeUntil[+A](source: Observable[A], other: Observable[Any]) extends SynchronizedObservable[A] {
