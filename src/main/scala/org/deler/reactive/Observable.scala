@@ -329,21 +329,9 @@ object Observable {
 
 
   class IterableToObservableWrapper[+A](val iterable: Iterable[A]) {
-    def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Closeable = this.toObservable(scheduler).subscribe(observer)
+    def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Closeable = toObservable(scheduler).subscribe(observer)
 
-    def toObservable(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = createWithCloseable {
-      observer =>
-        val it = iterable.iterator
-        scheduler scheduleRecursive {
-          self =>
-            if (it.hasNext) {
-              observer.onNext(it.next())
-              self()
-            } else {
-              observer.onCompleted()
-            }
-        }
-    }
+    def toObservable(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = ToObservable(iterable, scheduler)
   }
 
   implicit def iterableToObservableWrapper[A](iterable: Iterable[A]): IterableToObservableWrapper[A] = new IterableToObservableWrapper(iterable)
@@ -725,6 +713,22 @@ private case class TakeUntil[+A](source: Observable[A], other: Observable[Any]) 
       }
     })
     result
+  }
+}
+
+private case class ToObservable[+A](iterable: Iterable[A], scheduler: Scheduler)
+        extends BaseObservable[A] with ConformingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val it = iterable.iterator
+    scheduler scheduleRecursive {
+      self =>
+        if (it.hasNext) {
+          observer.onNext(it.next())
+          self()
+        } else {
+          observer.onCompleted()
+        }
+    }
   }
 }
 
