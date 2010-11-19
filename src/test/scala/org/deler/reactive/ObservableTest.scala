@@ -373,10 +373,12 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         600 -> OnNext("ignored")))
       var invoked = 0
 
-      val notifications = scheduler run {observable.map(n => {
-        invoked += 1
-        n
-      })}
+      val notifications = scheduler run {
+        observable.map(n => {
+          invoked += 1
+          n
+        })
+      }
 
       notifications must be equalTo Seq(
         201 -> OnNext("first"),

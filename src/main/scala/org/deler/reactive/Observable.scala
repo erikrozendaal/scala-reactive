@@ -292,10 +292,6 @@ object Observable {
     override def subscribe(observer: Observer[A]) = delegate(observer)
   })
 
-  def createSynchronizedWithCloseable[A](delegate: Observer[A] => Closeable): Observable[A] = Synchronize(new Observable[A] {
-    override def subscribe(observer: Observer[A]) = delegate(observer)
-  })
-
   /**
    * Returns an empty $coll.
    */
@@ -366,54 +362,7 @@ object Observable {
   implicit def iterableToObservableWrapper[A](iterable: Iterable[A]): IterableToObservableWrapper[A] = new IterableToObservableWrapper(iterable)
 
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
-    def merge: Observable[A] = createSynchronizedWithCloseable {
-      observer =>
-        val generatorSubscription = new MutableCloseable
-
-        val activeCount = new AtomicInteger(1)
-        val result = new CompositeCloseable(generatorSubscription)
-
-        generatorSubscription.set(source.subscribe(
-          onError = {
-            error =>
-              result.close()
-              observer.onError(error)
-          },
-          onCompleted = {
-            () =>
-              result -= generatorSubscription
-              if (activeCount.decrementAndGet() == 0) {
-                observer.onCompleted()
-              }
-          },
-          onNext = {
-            value =>
-              activeCount.incrementAndGet()
-
-              val holder = new MutableCloseable
-              result += holder
-
-              holder.set(value.subscribe(new Observer[A] {
-                override def onNext(value: A) {
-                  observer.onNext(value)
-                }
-
-                override def onError(error: Exception) {
-                  result.close()
-                  observer.onError(error)
-                }
-
-                override def onCompleted() {
-                  result -= holder
-                  if (activeCount.decrementAndGet() == 0) {
-                    observer.onCompleted()
-                  }
-                }
-              }))
-          }))
-
-        result
-    }
+    def merge: Observable[A] = Merge(source)
   }
 
   implicit def nestedObservableWrapper[A](source: Observable[Observable[A]]) = new NestedObservableWrapper(source)
@@ -595,6 +544,56 @@ private case class Materialize[A](source: ConformingObservable[A])
 
       override def onNext(value: A) = observer.onNext(OnNext(value))
     })
+  }
+}
+
+private case class Merge[A](generator: Observable[Observable[A]]) extends SynchronizedObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val generatorSubscription = new MutableCloseable
+
+    val activeSubscriptionCount = new AtomicInteger(1)
+    val subscriptions = new CompositeCloseable(generatorSubscription)
+
+    generatorSubscription.set(generator.subscribe(new Observer[Observable[A]] {
+      override def onError(error: Exception) {
+        subscriptions.close()
+        observer.onError(error)
+      }
+
+      override def onCompleted() {
+        subscriptions -= generatorSubscription
+        if (activeSubscriptionCount.decrementAndGet() == 0) {
+          observer.onCompleted()
+        }
+      }
+
+      override def onNext(value: Observable[A]) {
+        activeSubscriptionCount.incrementAndGet()
+
+        val subscription = new MutableCloseable
+        subscriptions += subscription
+
+        subscription.set(value.subscribe(new Observer[A] {
+          override def onNext(value: A) {
+            observer.onNext(value)
+          }
+
+          override def onError(error: Exception) {
+            subscriptions.close()
+            observer.onError(error)
+          }
+
+          override def onCompleted() {
+            subscriptions -= subscription
+            if (activeSubscriptionCount.decrementAndGet() == 0) {
+              observer.onCompleted()
+            }
+          }
+        }))
+      }
+    }))
+
+    subscriptions
   }
 }
 
