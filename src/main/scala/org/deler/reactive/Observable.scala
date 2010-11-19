@@ -355,10 +355,7 @@ object Observable {
   implicit def nestedObservableWrapper[A](source: Observable[Observable[A]]) = new NestedObservableWrapper(source)
 
   class DematerializeObservableWrapper[A](source: Observable[Notification[A]]) {
-    def dematerialize: Observable[A] = createWithCloseable {
-      observer =>
-        source.subscribe(onNext = _.accept(observer), onError = observer.onError, onCompleted = observer.onCompleted)
-    }
+    def dematerialize: Observable[A] = Dematerialize(source)
   }
 
   implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
@@ -473,6 +470,11 @@ private case class Conform[+A](source: Observable[A]) extends ConformedObservabl
   override protected def doSubscribe(observer: Observer[A]): Closeable = source.subscribe(observer)
 
   override def synchronize: Observable[A] = source.synchronize
+}
+
+private case class Dematerialize[+A](source: Observable[Notification[A]]) extends ConformedObservable[A] {
+  override protected def doSubscribe(observer: Observer[A]): Closeable =
+    source.subscribe(onNext = _.accept(observer), onError = observer.onError, onCompleted = observer.onCompleted)
 }
 
 private case class Filter[A](source: ConformingObservable[A], predicate: A => Boolean)
