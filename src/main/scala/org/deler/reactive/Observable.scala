@@ -233,27 +233,14 @@ trait Observable[+A] {
    * Asynchronously subscribe (and unsubscribe) observers on `scheduler`. The subscription is always completed
    * before the observer is unsubscribed.
    */
-  def subscribeOn(scheduler: Scheduler): Observable[A] = createWithCloseable {
-    observer =>
-      val scheduled = new MutableCloseable
-      val result = new MutableCloseable(scheduled)
-
-      scheduled.set(scheduler schedule {
-        val subscription = this.subscribe(observer)
-        result clearAndSet new ScheduledCloseable(subscription, scheduler)
-      })
-      result
-  }
+  def subscribeOn(scheduler: Scheduler): Observable[A] = SubscribeOn(this, scheduler)
 
   /**
    * Asynchronously notify observers on the specified `scheduler`. Notifications are still
    * delivered one at a time, in-order. An internal, unbounded queue is used to ensure the producer
    * is not limited by a slow consumer.
    */
-  def observeOn(scheduler: Scheduler): Observable[A] = createWithCloseable {
-    observer =>
-      this.subscribe(new ScheduledObserver(observer, scheduler))
-  }
+  def observeOn(scheduler: Scheduler): Observable[A] = ObserveOn(this, scheduler)
 
   def conform: Observable[A] = Conform(this)
 
@@ -597,6 +584,13 @@ private case class Merge[A](generator: Observable[Observable[A]]) extends Synchr
   }
 }
 
+private case class ObserveOn[A](source: ConformingObservable[A], scheduler: Scheduler)
+        extends ConformedObservable[A] with SynchronizingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    source.subscribe(new ScheduledObserver(observer, scheduler))
+  }
+}
+
 private case class Repeat[+A](source: ConformingObservable[A]) extends BaseObservable[A] with ConformingObservable[A] {
   def doSubscribe(observer: Observer[A]): Closeable = {
     val result = new MutableCloseable
@@ -652,6 +646,20 @@ private case class Rescue[A, B >: A](source: ConformingObservable[A], other: Con
       override def onError(error: Exception) = result clearAndSet {other.subscribe(observer)}
     }))
 
+    result
+  }
+}
+
+private case class SubscribeOn[A](source: ConformingObservable[A], scheduler: Scheduler)
+        extends BaseObservable[A] with ConformingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val scheduled = new MutableCloseable
+    val result = new MutableCloseable(scheduled)
+
+    scheduled.set(scheduler schedule {
+      val subscription = source.subscribe(observer)
+      result clearAndSet new ScheduledCloseable(subscription, scheduler)
+    })
     result
   }
 }

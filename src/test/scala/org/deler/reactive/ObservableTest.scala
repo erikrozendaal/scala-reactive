@@ -882,6 +882,14 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       observable.subscriptions must be equalTo Seq(201 -> 1001)
     }
 
+    "conform to observable contract" in {
+      val observable = scheduler.createHotObservable(Seq(250 -> OnNext("foo"), 300 -> OnCompleted, 350 -> OnNext("ignored")))
+
+      val notifications = scheduler.run {observable.subscribeOn(scheduler)}
+
+      notifications must be equalTo Seq(250 -> OnNext("foo"), 300 -> OnCompleted)
+    }
+
     "not run scheduled subscription when cancelled" in {
       val observable = scheduler.createHotObservable(Seq())
 
