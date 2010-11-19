@@ -717,6 +717,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       observable.repeat.repeat(0) must be equalTo observable.repeat(0)
       observable.repeat(1).repeat must be equalTo observable.repeat
       observable.repeat(2).repeat(3) must be equalTo observable.repeat(6)
+      observable.repeat(0).repeat must be equalTo observable.repeat(0)
     }
 
     "fail on illegal argument" in {

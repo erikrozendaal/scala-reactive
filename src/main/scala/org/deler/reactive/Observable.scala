@@ -638,7 +638,7 @@ private case class RepeatN[+A](source: ConformingObservable[A], n: Int)
     result
   }
 
-  override def repeat: Observable[A] = Repeat(source)
+  override def repeat: Observable[A] = if (n > 0) Repeat(source) else this
 
   override def repeat(n: Int): Observable[A] = RepeatN(source, this.n * n)
 }
