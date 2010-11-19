@@ -14,7 +14,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
   import Observable.iterableToObservableWrapper
 
 
-  val ex = new Exception("fail")
+  val ex = new Exception("dummy exception")
 
   val scheduler = new TestScheduler
   val observer = new TestObserver[String](scheduler)
@@ -927,12 +927,8 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
   }
 
   "Observable.let" should {
-    "pass this to delegate" in {
-      val observable = Observable.empty
-
-      val result = observable.let(x => x)
-
-      (result eq observable) must beTrue
+    "pass error in let-function to caller" in {
+      Observable.value("ignored").let(x => throw ex).subscribe(observer) must throwException(ex)
     }
 
     "create observable only once to avoid additional side-effects" in {
