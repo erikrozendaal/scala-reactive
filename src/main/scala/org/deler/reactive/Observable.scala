@@ -193,7 +193,7 @@ trait Observable[+A] {
    * Completes when either this $coll completes before the timeout or the `other` $coll completes after the timeout.
    */
   def timeout[B >: A](dueTime: Duration, other: Observable[B], scheduler: Scheduler): Observable[B] = {
-    val source = this.map(Some(_)) amb Observable.timer(dueTime)(scheduler).map(_ => None)
+    val source = this.map(Some(_)) amb Observable.timer(dueTime, scheduler).map(_ => None)
     source flatMap {
       case Some(value) => Observable.returning(value)
       case None => other
@@ -257,7 +257,9 @@ trait Observable[+A] {
  * @define coll observable sequence
  */
 object Observable {
-  def apply[A](values: A*)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = values.toObservable(scheduler)
+  def apply[A](values: A*): Observable[A] = values.toObservable(Scheduler.currentThread)
+
+  def apply[A](scheduler: Scheduler, values: A*): Observable[A] = values.toObservable(scheduler)
 
   /**
    * The default `onNext` handler does nothing.
@@ -285,32 +287,53 @@ object Observable {
   })
 
   /**
+   * Returns an empty $coll using the immediate scheduler.
+   */
+  def empty: Observable[Nothing] = empty(Scheduler.immediate)
+
+  /**
    * Returns an empty $coll.
    */
-  def empty(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithCloseable {
+  def empty(scheduler: Scheduler): Observable[Nothing] = createWithCloseable {
     observer =>
       scheduler schedule observer.onCompleted()
   }
 
   /**
+   * Returns a $coll that terminates with `error` using the immediate scheduler.
+   */
+  def throwing(error: Exception): Observable[Nothing] = throwing(error, Scheduler.immediate)
+
+  /**
    * Returns a $coll that terminates with `error`.
    */
-  def throwing(error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithCloseable {
+  def throwing(error: Exception, scheduler: Scheduler): Observable[Nothing] = createWithCloseable {
     observer =>
       scheduler schedule observer.onError(error)
   }
 
   /**
+   * Returns a $coll that contains a single `value` using the immediate scheduler.
+   */
+  def returning[A](value: A): Observable[A] = returning(value, Scheduler.immediate)
+
+  /**
    * Returns a $coll that contains a single `value`.
    */
-  def returning[A](value: A)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = {
+  def returning[A](value: A, scheduler: Scheduler): Observable[A] = {
     Seq(value).toObservable(scheduler)
   }
 
   /**
+   * Returns an infinite $coll that produces a new value each `period` using the thread pool scheduler. The values
+   * produced are `0`, `1`, `2`, ...
+   */
+  def interval(period: Duration): Observable[Int] = interval(period, Scheduler.threadPool)
+
+  /**
    * Returns an infinite $coll that produces a new value each `period`. The values produced are `0`, `1`, `2`, ...
    */
-  def interval(period: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithCloseable {
+  def interval(period: Duration, scheduler: Scheduler): Observable[Int] = createWithCloseable {
     observer =>
       var counter = 0
       scheduler.scheduleRecursiveAfter(period) {
@@ -322,9 +345,15 @@ object Observable {
   }
 
   /**
+   * Returns an $coll that produces a single value after `dueTime` using the thread pool scheduler. The value produced
+   * is `0`.
+   */
+  def timer(dueTime: Duration): Observable[Int] = timer(dueTime, Scheduler.threadPool)
+
+  /**
    * Returns an $coll that produces a single value after `dueTime`. The value produced is `0`.
    */
-  def timer(dueTime: Duration)(implicit scheduler: Scheduler = Scheduler.threadPool): Observable[Int] = createWithCloseable {
+  def timer(dueTime: Duration, scheduler: Scheduler): Observable[Int] = createWithCloseable {
     observer =>
       scheduler.scheduleAfter(dueTime) {
         observer.onNext(0)
