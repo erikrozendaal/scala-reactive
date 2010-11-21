@@ -242,8 +242,15 @@ trait Observable[+A] {
    */
   def observeOn(scheduler: Scheduler): Observable[A] = ObserveOn(this, scheduler)
 
+  /**
+   * Forces this $coll to conform to the $coll contract.
+   */
   def conform: Observable[A] = Conform(this)
 
+  /**
+   * Forces this $coll to conform to the $coll contract and ensures that all notifications are serialized even
+   * when multiple threads push notifications.
+   */
   def synchronize: Observable[A] = Synchronize(this)
 }
 
