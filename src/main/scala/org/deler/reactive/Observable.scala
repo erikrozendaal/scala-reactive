@@ -389,6 +389,15 @@ object Observable {
       }
   }
 
+  class ObservableExtensions[A](observable: Observable[A]) {
+    /**
+     * Merges this observable sequence with `that` observable sequence.
+     */
+    def merge[B >: A](that: Observable[B]): Observable[B] = Merge(Observable(Scheduler.immediate, observable, that))
+  }
+
+  implicit def observableExtensions[A](observable: Observable[A]) = new ObservableExtensions(observable)
+
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
     /**
      * Merges an observable sequence of observable sequences into an observable sequence.
