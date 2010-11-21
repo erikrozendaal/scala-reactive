@@ -4,7 +4,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import org.joda.time.Duration
 import scala.collection._
 import scala.concurrent.SyncVar
-import scala.util.control.Exception._
 import java.util.concurrent.{TimeoutException, LinkedBlockingQueue}
 
 /**
@@ -176,7 +175,7 @@ trait Observable[+A] {
    * Completes when either this $coll completes before the timeout or the timeout occurs.
    */
   def timeout(dueTime: Duration, scheduler: Scheduler): Observable[A] = {
-    timeout(dueTime, Observable.raise(new TimeoutException), scheduler)
+    timeout(dueTime, Observable.throwing(new TimeoutException), scheduler)
   }
 
   /**
@@ -196,7 +195,7 @@ trait Observable[+A] {
   def timeout[B >: A](dueTime: Duration, other: Observable[B], scheduler: Scheduler): Observable[B] = {
     val source = this.map(Some(_)) amb Observable.timer(dueTime)(scheduler).map(_ => None)
     source flatMap {
-      case Some(value) => Observable.value(value)
+      case Some(value) => Observable.returning(value)
       case None => other
     }
   }
@@ -227,7 +226,7 @@ trait Observable[+A] {
   /**
    * Switches to `other` when `this` terminates with an error.
    */
-  def rescue[B >: A](other: Observable[B]): Observable[B] = Rescue(this, other)
+  def catching[B >: A](other: Observable[B]): Observable[B] = Catching(this, other)
 
   /**
    * Asynchronously subscribe (and unsubscribe) observers on `scheduler`. The subscription is always completed
@@ -297,7 +296,7 @@ object Observable {
   /**
    * Returns a $coll that terminates with `error`.
    */
-  def raise(error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithCloseable {
+  def throwing(error: Exception)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[Nothing] = createWithCloseable {
     observer =>
       scheduler schedule observer.onError(error)
   }
@@ -305,7 +304,7 @@ object Observable {
   /**
    * Returns a $coll that contains a single `value`.
    */
-  def value[A](value: A)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = {
+  def returning[A](value: A)(implicit scheduler: Scheduler = Scheduler.immediate): Observable[A] = {
     Seq(value).toObservable(scheduler)
   }
 
@@ -478,7 +477,7 @@ private case class Filter[A](source: ConformingObservable[A], predicate: A => Bo
     val subscription = new MutableCloseable
     subscription.set(source.subscribe(new DelegateObserver(observer) {
       override def onNext(value: A) {
-        catching(classOf[Exception]) either predicate(value) match {
+        util.control.Exception.catching(classOf[Exception]) either predicate(value) match {
           case Left(error) =>
             subscription.close()
             super.onError(error.asInstanceOf[Exception])
@@ -499,7 +498,7 @@ private case class Map[A, B](source: ConformingObservable[A], f: A => B)
     val subscription = new MutableCloseable
     subscription.set(source.subscribe(new Observer[A] {
       override def onNext(value: A) {
-        catching(classOf[Exception]) either f(value) match {
+        util.control.Exception.catching(classOf[Exception]) either f(value) match {
           case Left(error) =>
             subscription.close()
             observer.onError(error.asInstanceOf[Exception])
@@ -633,7 +632,7 @@ private case class RepeatN[+A](source: ConformingObservable[A], n: Int)
   override def repeat(n: Int): Observable[A] = RepeatN(source, this.n * n)
 }
 
-private case class Rescue[A, B >: A](source: ConformingObservable[A], other: ConformingObservable[B])
+private case class Catching[A, B >: A](source: ConformingObservable[A], other: ConformingObservable[B])
         extends BaseObservable[B] with ConformingObservable[B] {
   def doSubscribe(observer: Observer[B]): Closeable = {
     val subscription = new MutableCloseable
