@@ -456,7 +456,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         203 -> OnNext("c"))
     }
 
-    "pass values from flattened observables in the order produced" in {
+    "pass values from merged observables in the order produced" in {
       val observable1 = Observable("a", "b")
       val observable2 = Observable("c", "d", "e")
 
@@ -500,6 +500,62 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
       invoked must beFalse
       notifications must be equalTo Seq(201 -> OnError(ex))
+    }
+  }
+
+  "Observable.switch" should {
+    "switch to second observable even when first is not complete" in {
+      val first = scheduler.createHotObservable(Seq(
+        250 -> OnNext("ignored"),
+        350 -> OnNext("first"),
+        450 -> OnCompleted,
+        550 -> OnNext("ignored")))
+      val second = scheduler.createHotObservable(Seq(
+        300 -> OnNext("ignored"),
+        400 -> OnNext("second"),
+        500 -> OnCompleted,
+        600 -> OnNext("ignored")))
+      val generator = scheduler.createHotObservable(Seq(
+        275 -> OnNext(first),
+        375 -> OnNext(second),
+        380 -> OnCompleted))
+
+      val notifications = scheduler.run(generator.switch)
+
+      notifications must be equalTo Seq(
+        350 -> OnNext("first"),
+        400 -> OnNext("second"),
+        500 -> OnCompleted)
+      generator.subscriptions must be equalTo Seq(200 -> 380)
+      first.subscriptions must be equalTo Seq(275 -> 375)
+      second.subscriptions must be equalTo Seq(375 -> 500)
+    }
+
+    "produce values from second observable when first completes" in {
+      val first = scheduler.createHotObservable(Seq(
+        250 -> OnNext("ignored"),
+        350 -> OnNext("first"),
+        450 -> OnCompleted,
+        550 -> OnNext("ignored")))
+      val second = scheduler.createHotObservable(Seq(
+        475 -> OnNext("ignored"),
+        550 -> OnNext("second"),
+        575 -> OnCompleted,
+        600 -> OnNext("ignored")))
+      val generator = scheduler.createHotObservable(Seq(
+        275 -> OnNext(first),
+        500 -> OnNext(second),
+        600 -> OnCompleted))
+
+      val notifications = scheduler.run(generator.switch)
+
+      generator.subscriptions must be equalTo Seq(200 -> 600)
+      first.subscriptions must be equalTo Seq(275 -> 450)
+      second.subscriptions must be equalTo Seq(500 -> 575)
+      notifications must be equalTo Seq(
+        350 -> OnNext("first"),
+        550 -> OnNext("second"),
+        600 -> OnCompleted)
     }
   }
 

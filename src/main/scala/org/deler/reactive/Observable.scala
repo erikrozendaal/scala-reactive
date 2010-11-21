@@ -343,7 +343,16 @@ object Observable {
   implicit def iterableToObservableWrapper[A](iterable: Iterable[A]): IterableToObservableWrapper[A] = new IterableToObservableWrapper(iterable)
 
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
+    /**
+     * Merges an observable sequence of observable sequences into an observable sequence.
+     */
     def merge: Observable[A] = Merge(source)
+
+    /**
+     * Transforms an observable sequence of observable sequences into an observable
+     * sequence producing values only from the most recent observable sequence
+     */
+    def switch: Observable[A] = Switch(source)
   }
 
   implicit def nestedObservableWrapper[A](source: Observable[Observable[A]]) = new NestedObservableWrapper(source)
@@ -530,7 +539,7 @@ private case class Materialize[A](source: ConformingObservable[A])
   }
 }
 
-private case class Merge[A](generator: Observable[Observable[A]]) extends SynchronizedObservable[A] {
+private case class Merge[A](generator: ConformingObservable[Observable[A]]) extends SynchronizedObservable[A] {
   def doSubscribe(observer: Observer[A]): Closeable = {
     val generatorSubscription = new MutableCloseable
 
@@ -556,7 +565,7 @@ private case class Merge[A](generator: Observable[Observable[A]]) extends Synchr
         val subscription = new MutableCloseable
         subscriptions += subscription
 
-        subscription.set(value.subscribe(new Observer[A] {
+        subscription.set(value.conform.subscribe(new Observer[A] {
           override def onNext(value: A) {
             observer.onNext(value)
           }
@@ -656,6 +665,59 @@ private case class SubscribeOn[A](source: ConformingObservable[A], scheduler: Sc
       val subscription = source.subscribe(observer)
       result clearAndSet new ScheduledCloseable(subscription, scheduler)
     })
+    result
+  }
+}
+
+private case class Switch[A](generator: ConformingObservable[Observable[A]]) extends SynchronizedObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val generatorSubscription = new MutableCloseable
+    val currentSubscription = new MutableCloseable
+    val result = new CompositeCloseable(generatorSubscription, currentSubscription)
+
+    @volatile var generatorActive = true
+    @volatile var currentActive = false
+
+    generatorSubscription.set(generator.subscribe(new Observer[Observable[A]] {
+      override def onError(error: Exception) {
+        result.close()
+        observer.onError(error)
+      }
+
+      override def onCompleted() {
+        result -= generatorSubscription
+        generatorActive = false
+        if (!currentActive) {
+          result.close()
+          observer.onCompleted()
+        }
+      }
+
+      override def onNext(value: Observable[A]) {
+        currentActive = true
+
+        currentSubscription.clearAndSet(value.conform.subscribe(new Observer[A] {
+          override def onNext(value: A) {
+            observer.onNext(value)
+          }
+
+          override def onError(error: Exception) {
+            result.close()
+            observer.onError(error)
+          }
+
+          override def onCompleted() {
+            currentSubscription.clear()
+            currentActive = false
+            if (!generatorActive) {
+              result.close()
+              observer.onCompleted()
+            }
+          }
+        }))
+      }
+    }))
+
     result
   }
 }
