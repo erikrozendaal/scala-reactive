@@ -10,7 +10,7 @@ trait Subject[A] extends Observable[A] with Observer[A]
 /**
  * Dispatches notifications to all subscribers.
  */
-class Dispatcher[A] extends Subject[A] {
+abstract class Dispatcher[A] extends Subject[A] {
   @volatile private var subscriptions = Set[SubjectSubscription]()
 
   def subscribe(observer: Observer[A]): Closeable = {
@@ -50,6 +50,15 @@ class Dispatcher[A] extends Subject[A] {
 }
 
 /**
+ * Dispatches notifications to all subscribers using `scheduler`.
+ */
+abstract class ScheduledDispatcher[A](scheduler: Scheduler = Scheduler.immediate) extends Dispatcher[A] {
+  override def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
+    super.subscribe(new ScheduledObserver(observer, scheduler))
+  }
+}
+
+/**
  * Records all received notifications and provides support for replaying these notifications to an
  * [[org.deler.reactive.Observer]].
  */
@@ -78,15 +87,12 @@ trait Recorder[A] extends Observer[A] {
 }
 
 /**
- * An object that is both an observer and an observable sequence.
+ * An object that is both an observer and an observable sequence. This subject publishes all observed notifications to
+ * all of its subscribers.
  */
-class BasicSubject[A](scheduler: Scheduler = Scheduler.immediate)
-        extends Dispatcher[A]
-                with SynchronizedObserver[A] {
-  override def subscribe(observer: Observer[A]): Closeable = CurrentThreadScheduler runImmediate {
-    super.subscribe(new ScheduledObserver(observer, scheduler))
-  }
-}
+class PublishSubject[A](scheduler: Scheduler = Scheduler.immediate)
+        extends ScheduledDispatcher[A]
+                with SynchronizedObserver[A]
 
 /**
  * An object that is both an observer and an observable sequence and replays all past notifications to new subscribers.

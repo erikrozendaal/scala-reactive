@@ -139,6 +139,34 @@ trait Observable[+A] {
   }
 
   /**
+   * Returns a connectable $coll that shares a single subscription to this $coll using the immediate scheduler.
+   */
+  def publish(): ConnectableObservable[A] = publish(Scheduler.immediate)
+
+  /**
+   * Returns a connectable $coll that shares a single subscription to this $coll.
+   */
+  def publish(scheduler: Scheduler): ConnectableObservable[A] = new PublishConnectableObservable(this, scheduler)
+
+  /**
+   * Returns an $coll that is the result of invoking the `selector` on a connectable observable sequence that shares a
+   * single subscription to the this $coll using the immediate scheduler.
+   */
+  def publish[B](selector: Observable[A] => Observable[B]): Observable[B] = publish(selector, Scheduler.immediate)
+
+  /**
+   * Returns an $coll that is the result of invoking the `selector` on a connectable observable sequence that shares a
+   * single subscription to the this $coll.
+   */
+  def publish[B](selector: Observable[A] => Observable[B], scheduler: Scheduler): Observable[B] = createWithCloseable {
+    observer =>
+      val connectable = this.publish(scheduler)
+      val observable = selector(connectable)
+
+      new CompositeCloseable(observable.subscribe(observer), connectable.connect())
+  }
+
+  /**
    * Repeats the source observable indefinitely.
    */
   def repeat: Observable[A] = Repeat(this)

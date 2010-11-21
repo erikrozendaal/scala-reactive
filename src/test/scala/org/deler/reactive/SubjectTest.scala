@@ -13,7 +13,7 @@ class SubjectTest extends Specification with JUnit with Mockito {
   val observer2 = mock[Observer[String]]
   var subscription: Closeable = _
 
-  var subject: Subject[String] = new BasicSubject[String]
+  var subject: Subject[String] = new PublishSubject[String]
 
   val replaySubject = beforeContext(subject = new ReplaySubject[String])
 

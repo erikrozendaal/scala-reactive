@@ -11,7 +11,7 @@ case class TicketPurchased(lotteryId: UUID, customerId: UUID, ticketNumber: Stri
 
 class LotteryTicket(lottery: Lottery, customerId: UUID, ticketNumber: String)
 
-class Lottery extends BasicSubject[LotteryEvent] {
+class Lottery extends PublishSubject[LotteryEvent] {
 
 	val prizeAmount = collect { case event: LotteryCreated => event.prizeAmount }
 	val ticketPrize = collect { case event: LotteryCreated => event.ticketPrize }
