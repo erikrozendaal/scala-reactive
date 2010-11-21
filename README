@@ -29,5 +29,5 @@ See the unit tests and the org.deler.reactive.examples package for some examples
 LIMITATIONS
 -----------
 
-- Not thread-safe, so don't share between threads.
-- Scheduling and error handling still needs work.
+- Many combinators still missing (drop*, switch, etc).
+- No integration yet with Java/Scala APIs (NIO, futures, actors, Swing, Servlets, etc).
