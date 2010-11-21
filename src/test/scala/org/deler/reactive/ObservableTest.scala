@@ -11,8 +11,6 @@ import java.util.concurrent.TimeoutException
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableTest extends Specification with JUnit with Mockito with ScalaCheck {
-  import Observable.iterableToObservableWrapper
-
 
   val ex = new Exception("dummy exception")
 

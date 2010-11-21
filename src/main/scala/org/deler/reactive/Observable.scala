@@ -257,8 +257,7 @@ trait Observable[+A] {
  * @define coll observable sequence
  */
 object Observable {
-  def apply[A](values: A*)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] =
-    new IterableToObservableWrapper(values).toObservable(scheduler)
+  def apply[A](values: A*)(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = values.toObservable(scheduler)
 
   /**
    * The default `onNext` handler does nothing.
@@ -332,15 +331,6 @@ object Observable {
         observer.onCompleted()
       }
   }
-
-
-  class IterableToObservableWrapper[+A](val iterable: Iterable[A]) {
-    def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Closeable = toObservable(scheduler).subscribe(observer)
-
-    def toObservable(implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = ToObservable(iterable, scheduler)
-  }
-
-  implicit def iterableToObservableWrapper[A](iterable: Iterable[A]): IterableToObservableWrapper[A] = new IterableToObservableWrapper(iterable)
 
   class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
     /**
