@@ -86,7 +86,7 @@ class ScheduledObserver[A](delegate: Observer[A], scheduler: Scheduler) extends 
  * This trait takes care that no more notifications are send after either `onError` or `onCompleted` occurred.
  */
 trait ConformedObserver[-A] extends Observer[A] with Closeable {
-  @volatile private var closedOrCompleted = false
+  private var closedOrCompleted = false
 
   def close() {
     closedOrCompleted = true
