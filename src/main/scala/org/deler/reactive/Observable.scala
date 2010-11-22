@@ -63,6 +63,11 @@ trait Observable[+A] {
   def amb[B >: A](that: Observable[B]): Observable[B] = Ambiguous(this, that)
 
   /**
+   * Returns the first $coll to produce a value.
+   */
+  def choice[B >: A](that: Observable[B]): Observable[B] = Choice(this, that)
+
+  /**
    * A new observable defined by applying a partial function to all values produced by this observable on which the
    * function is defined.
    */
@@ -499,6 +504,75 @@ private case class Ambiguous[A, B >: A](left: Observable[A], right: Observable[B
           result -= leftSubscription
         if (leftOrRight.get == Right)
           notification.accept(observer)
+    })
+
+    result
+  }
+}
+
+private case class Choice[A, B >: A](left: ConformingObservable[A], right: ConformingObservable[B])
+        extends BaseObservable[B] with SynchronizingObservable[B] {
+  val Unknown = 0
+  val Left = 1
+  val Right = 2
+
+  def doSubscribe(observer: Observer[B]): Closeable = {
+    val completed = new AtomicInteger(0)
+    val leftOrRight = new AtomicInteger(Unknown)
+
+    val leftSubscription = new MutableCloseable
+    val rightSubscription = new MutableCloseable
+    val result = new CompositeCloseable(leftSubscription, rightSubscription)
+
+    leftSubscription.set(left subscribe new Observer[A] {
+      override def onNext(value: A) {
+        if (leftOrRight.compareAndSet(Unknown, Left))
+          result -= rightSubscription
+        if (leftOrRight.get == Left)
+          observer.onNext(value)
+      }
+
+      override def onError(error: Exception) {
+        if (leftOrRight.compareAndSet(Unknown, Left)) {
+          result.close()
+          observer.onError(error)
+        }
+      }
+
+      override def onCompleted() {
+        if (completed.incrementAndGet() == 2) {
+          result.close()
+          observer.onCompleted()
+        } else {
+          result -= leftSubscription
+        }
+      }
+
+    })
+
+    rightSubscription.set(right subscribe new Observer[B] {
+      override def onNext(value: B) {
+        if (leftOrRight.compareAndSet(Unknown, Right))
+          result -= leftSubscription
+        if (leftOrRight.get == Right)
+          observer.onNext(value)
+      }
+
+      override def onError(error: Exception) {
+        if (leftOrRight.compareAndSet(Unknown, Right)) {
+          result.close()
+          observer.onError(error)
+        }
+      }
+
+      override def onCompleted() {
+        if (completed.incrementAndGet() == 2) {
+          result.close()
+          observer.onCompleted()
+        } else {
+          result -= rightSubscription
+        }
+      }
     })
 
     result

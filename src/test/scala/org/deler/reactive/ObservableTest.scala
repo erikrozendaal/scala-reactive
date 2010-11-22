@@ -48,6 +48,52 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "Observable.choice" should {
+    "return the left observable when it produces a value before the right observable" in {
+      val left = scheduler.createHotObservable(Seq(250 -> OnNext("left"), 350 -> OnCompleted, 400 -> OnNext("illegal")))
+      val right = scheduler.createHotObservable(Seq(225 -> OnCompleted, 310 -> OnError(ex)))
+
+      val notifications = scheduler.run(left choice right)
+
+      notifications must be equalTo Seq(250 -> OnNext("left"), 350 -> OnCompleted)
+      left.subscriptions must be equalTo Seq(200 -> 350)
+      right.subscriptions must be equalTo Seq(200 -> 225)
+    }
+
+    "return the right observable when it produces a value before the left observable" in {
+      val left = scheduler.createHotObservable(Seq(250 -> OnCompleted))
+      val right = scheduler.createHotObservable(Seq(300 -> OnNext("right"), 400 -> OnCompleted, 450 -> OnNext("illegal")))
+
+      val notifications = scheduler.run(left choice right)
+
+      notifications must be equalTo Seq(300 -> OnNext("right"), 400 -> OnCompleted)
+      left.subscriptions must be equalTo Seq(200 -> 250)
+      right.subscriptions must be equalTo Seq(200 -> 400)
+    }
+
+    "be empty when both left and right are empty" in {
+      val left = scheduler.createHotObservable(Seq(350 -> OnCompleted))
+      val right = scheduler.createHotObservable(Seq(400 -> OnCompleted))
+
+      val notifications = scheduler.run(left choice right)
+
+      notifications must be equalTo Seq(400 -> OnCompleted)
+      left.subscriptions must be equalTo Seq(200 -> 350)
+      right.subscriptions must be equalTo Seq(200 -> 400)
+    }
+
+    "fail when left or right fails before producing a value" in {
+      val left = scheduler.createHotObservable(Seq(325 -> OnNext("left"), 350 -> OnCompleted))
+      val right = scheduler.createHotObservable(Seq(300 -> OnError(ex), 310 -> OnNext("illegal")))
+
+      val notifications = scheduler.run(left choice right)
+
+      notifications must be equalTo Seq(300 -> OnError(ex))
+      left.subscriptions must be equalTo Seq(200 -> 300)
+      right.subscriptions must be equalTo Seq(200 -> 300)
+    }
+  }
+
   "Observable.create" should {
     "invoke delegate on subscription with the observer as argument" in {
       var delegateCalled = false
