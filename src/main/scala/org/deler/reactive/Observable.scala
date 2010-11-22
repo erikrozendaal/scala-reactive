@@ -284,6 +284,17 @@ trait Observable[+A] {
  * @define coll observable sequence
  */
 object Observable {
+
+  /**
+   * Returns the first $coll to produce a notification.
+   */
+  def amb[A](sources: Observable[A]*): Observable[A] = Ambiguous(sources: _*)
+
+  /**
+   * Returns the first $coll to produce a value.
+   */
+  def choice[A](sources: Observable[A]*): Observable[A] = Choice(sources: _*)
+
   def apply[A](values: A*): Observable[A] = values.toObservable(Scheduler.currentThread)
 
   def apply[A](scheduler: Scheduler, values: A*): Observable[A] = values.toObservable(scheduler)
@@ -479,101 +490,92 @@ private abstract class SynchronizedObservable[+A] extends SynchronizingObservabl
   }
 }
 
-private case class Ambiguous[A, B >: A](left: Observable[A], right: Observable[B]) extends BaseObservable[B] with SynchronizingObservable[B] {
-  val Unknown = 0
-  val Left = 1
-  val Right = 2
+private case class Ambiguous[A](sources: Observable[A]*) extends BaseObservable[A] with SynchronizingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val subscriptions = sources.map(_ => new MutableCloseable)
+    val result = new CompositeCloseable(subscriptions: _*)
 
-  def doSubscribe(observer: Observer[B]): Closeable = {
-    val leftOrRight = new AtomicInteger(Unknown)
+    def closeOtherSubscriptions(i: Int) {
+      for (j <- subscriptions.indices if i != j) {
+        result -= subscriptions(j)
+      }
+    }
 
-    val leftSubscription = new MutableCloseable
-    val rightSubscription = new MutableCloseable
-    val result = new CompositeCloseable(leftSubscription, rightSubscription)
+    val choice = new AtomicInteger(-1)
+    for (i <- sources.indices) {
+      subscriptions(i).set(sources(i).conform subscribe new Observer[A] {
+        override def onNext(value: A) {
+          if (choice.get == i) {
+            observer.onNext(value)
+          } else if (choice.compareAndSet(-1, i)) {
+            closeOtherSubscriptions(i)
+            observer.onNext(value)
+          }
+        }
 
-    leftSubscription.set(left.materialize subscribe {
-      notification =>
-        if (leftOrRight.compareAndSet(Unknown, Left))
-          result -= rightSubscription
-        if (leftOrRight.get == Left)
-          notification.accept(observer)
-    })
-    rightSubscription.set(right.materialize subscribe {
-      notification =>
-        if (leftOrRight.compareAndSet(Unknown, Right))
-          result -= leftSubscription
-        if (leftOrRight.get == Right)
-          notification.accept(observer)
-    })
+        override def onError(error: Exception) {
+          if (choice.get == i || choice.compareAndSet(-1, i)) {
+            result.close()
+            observer.onError(error)
+          }
+        }
+
+        override def onCompleted() {
+          if (choice.get == i || choice.compareAndSet(-1, i)) {
+            result.close()
+            observer.onCompleted()
+          }
+        }
+      })
+    }
 
     result
   }
 }
 
-private case class Choice[A, B >: A](left: ConformingObservable[A], right: ConformingObservable[B])
-        extends BaseObservable[B] with SynchronizingObservable[B] {
-  val Unknown = 0
-  val Left = 1
-  val Right = 2
+private case class Choice[A](sources: Observable[A]*) extends BaseObservable[A] with SynchronizingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val subscriptions = sources.map(_ => new MutableCloseable)
+    val result = new CompositeCloseable(subscriptions: _*)
 
-  def doSubscribe(observer: Observer[B]): Closeable = {
+    def closeOtherSubscriptions(i: Int) {
+      for (j <- subscriptions.indices if i != j) {
+        result -= subscriptions(j)
+      }
+    }
+
     val completed = new AtomicInteger(0)
-    val leftOrRight = new AtomicInteger(Unknown)
+    val choice = new AtomicInteger(-1)
 
-    val leftSubscription = new MutableCloseable
-    val rightSubscription = new MutableCloseable
-    val result = new CompositeCloseable(leftSubscription, rightSubscription)
-
-    leftSubscription.set(left subscribe new Observer[A] {
-      override def onNext(value: A) {
-        if (leftOrRight.compareAndSet(Unknown, Left))
-          result -= rightSubscription
-        if (leftOrRight.get == Left)
-          observer.onNext(value)
-      }
-
-      override def onError(error: Exception) {
-        if (leftOrRight.compareAndSet(Unknown, Left)) {
-          result.close()
-          observer.onError(error)
+    for (i <- sources.indices) {
+      subscriptions(i).set(sources(i).conform subscribe new Observer[A] {
+        override def onNext(value: A) {
+          if (choice.get == i) {
+            observer.onNext(value)
+          } else if (choice.compareAndSet(-1, i)) {
+            closeOtherSubscriptions(i)
+            observer.onNext(value)
+          }
         }
-      }
 
-      override def onCompleted() {
-        if (completed.incrementAndGet() == 2) {
-          result.close()
-          observer.onCompleted()
-        } else {
-          result -= leftSubscription
+        override def onError(error: Exception) {
+          if (choice.get == i || choice.compareAndSet(-1, i)) {
+            result.close()
+            observer.onError(error)
+          }
         }
-      }
 
-    })
-
-    rightSubscription.set(right subscribe new Observer[B] {
-      override def onNext(value: B) {
-        if (leftOrRight.compareAndSet(Unknown, Right))
-          result -= leftSubscription
-        if (leftOrRight.get == Right)
-          observer.onNext(value)
-      }
-
-      override def onError(error: Exception) {
-        if (leftOrRight.compareAndSet(Unknown, Right)) {
-          result.close()
-          observer.onError(error)
+        override def onCompleted() {
+          if (choice.get == i || completed.incrementAndGet == sources.size) {
+            result.close()
+            observer.onCompleted()
+          } else {
+            result -= subscriptions(i)
+          }
         }
-      }
 
-      override def onCompleted() {
-        if (completed.incrementAndGet() == 2) {
-          result.close()
-          observer.onCompleted()
-        } else {
-          result -= rightSubscription
-        }
-      }
-    })
+      })
+    }
 
     result
   }

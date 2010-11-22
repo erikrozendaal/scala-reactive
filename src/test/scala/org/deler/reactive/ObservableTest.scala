@@ -51,13 +51,13 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
   "Observable.choice" should {
     "return the left observable when it produces a value before the right observable" in {
       val left = scheduler.createHotObservable(Seq(250 -> OnNext("left"), 350 -> OnCompleted, 400 -> OnNext("illegal")))
-      val right = scheduler.createHotObservable(Seq(225 -> OnCompleted, 310 -> OnError(ex)))
+      val right = scheduler.createHotObservable(Seq(275 -> OnNext("right"), 400 -> OnError(ex)))
 
       val notifications = scheduler.run(left choice right)
 
       notifications must be equalTo Seq(250 -> OnNext("left"), 350 -> OnCompleted)
       left.subscriptions must be equalTo Seq(200 -> 350)
-      right.subscriptions must be equalTo Seq(200 -> 225)
+      right.subscriptions must be equalTo Seq(200 -> 250)
     }
 
     "return the right observable when it produces a value before the left observable" in {
