@@ -158,13 +158,7 @@ trait Observable[+A] {
    * Returns an $coll that is the result of invoking the `selector` on a connectable observable sequence that shares a
    * single subscription to the this $coll.
    */
-  def publish[B](selector: Observable[A] => Observable[B], scheduler: Scheduler): Observable[B] = createWithCloseable {
-    observer =>
-      val connectable = this.publish(scheduler)
-      val observable = selector(connectable)
-
-      new CompositeCloseable(observable.subscribe(observer), connectable.connect())
-  }
+  def publish[B](selector: Observable[A] => Observable[B], scheduler: Scheduler): Observable[B] = Publish(this, selector, scheduler)
 
   /**
    * Repeats the source observable indefinitely.
@@ -649,6 +643,16 @@ private case class ObserveOn[A](source: ConformingObservable[A], scheduler: Sche
         extends ConformedObservable[A] with SynchronizingObservable[A] {
   def doSubscribe(observer: Observer[A]): Closeable = {
     source.subscribe(new ScheduledObserver(observer, scheduler))
+  }
+}
+
+private case class Publish[A, B](source: ConformingObservable[A], selector: Observable[A] => Observable[B], scheduler: Scheduler)
+        extends BaseObservable[B] with ConformingObservable[B] {
+  def doSubscribe(observer: Observer[B]): Closeable = {
+    val connectable = source.publish(scheduler)
+    val observable = selector(connectable)
+
+    new CompositeCloseable(observable.subscribe(observer), connectable.connect())
   }
 }
 

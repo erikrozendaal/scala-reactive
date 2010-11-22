@@ -8,6 +8,7 @@ trait ConnectableObservable[+A] extends Observable[A] {
    * @return a closeable that can be used to disconnect this observable sequence. 
    */
   def connect(): Closeable
+
 }
 
 private class PublishConnectableObservable[A](source: ConformingObservable[A], scheduler: Scheduler = Scheduler.immediate)
