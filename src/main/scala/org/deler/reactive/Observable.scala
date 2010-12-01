@@ -332,10 +332,7 @@ object Observable {
   /**
    * Returns an empty $coll.
    */
-  def empty(scheduler: Scheduler): Observable[Nothing] = createWithCloseable {
-    observer =>
-      scheduler schedule observer.onCompleted()
-  }
+  def empty(scheduler: Scheduler): Observable[Nothing] = Empty(scheduler)
 
   /**
    * Returns a $coll that terminates with `error` using the immediate scheduler.
@@ -345,10 +342,7 @@ object Observable {
   /**
    * Returns a $coll that terminates with `error`.
    */
-  def throwing(error: Exception, scheduler: Scheduler): Observable[Nothing] = createWithCloseable {
-    observer =>
-      scheduler schedule observer.onError(error)
-  }
+  def throwing(error: Exception, scheduler: Scheduler): Observable[Nothing] = Throwing(error, scheduler)
 
   /**
    * Returns a $coll that contains a single `value` using the immediate scheduler.
@@ -604,6 +598,18 @@ private case class Conform[+A](source: Observable[A]) extends ConformedObservabl
 private case class Dematerialize[+A](source: Observable[Notification[A]]) extends ConformedObservable[A] {
   override protected def doSubscribe(observer: Observer[A]): Closeable =
     source.subscribe(onNext = _.accept(observer), onError = observer.onError, onCompleted = observer.onCompleted)
+}
+
+private case class Empty(scheduler: Scheduler) extends BaseObservable[Nothing] with SynchronizingObservable[Nothing] {
+  override protected def doSubscribe(observer: Observer[Nothing]): Closeable = {
+    scheduler schedule observer.onCompleted()
+  }
+}
+
+private case class Throwing(error: Exception, scheduler: Scheduler) extends BaseObservable[Nothing] with SynchronizingObservable[Nothing] {
+  override protected def doSubscribe(observer: Observer[Nothing]): Closeable = {
+    scheduler schedule observer.onError(error)
+  }
 }
 
 private case class Filter[A](source: ConformingObservable[A], predicate: A => Boolean)
