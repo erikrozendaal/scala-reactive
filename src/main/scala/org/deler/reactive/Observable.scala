@@ -352,9 +352,7 @@ object Observable {
   /**
    * Returns a $coll that contains a single `value`.
    */
-  def returning[A](value: A, scheduler: Scheduler): Observable[A] = {
-    Seq(value).toObservable(scheduler)
-  }
+  def returning[A](value: A, scheduler: Scheduler): Observable[A] = Returning(value, scheduler)
 
   /**
    * Returns an infinite $coll that produces a new value each `period` using the thread pool scheduler. The values
@@ -609,6 +607,15 @@ private case class Empty(scheduler: Scheduler) extends BaseObservable[Nothing] w
 private case class Throwing(error: Exception, scheduler: Scheduler) extends BaseObservable[Nothing] with SynchronizingObservable[Nothing] {
   override protected def doSubscribe(observer: Observer[Nothing]): Closeable = {
     scheduler schedule observer.onError(error)
+  }
+}
+
+private case class Returning[A](value: A, scheduler: Scheduler) extends ConformedObservable[A] with SynchronizingObservable[A] {
+  override protected def doSubscribe(observer: Observer[A]): Closeable = {
+    scheduler schedule {
+      observer.onNext(value)
+      observer.onCompleted()
+    }
   }
 }
 

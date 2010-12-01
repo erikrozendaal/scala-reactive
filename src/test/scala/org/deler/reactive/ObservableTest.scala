@@ -652,15 +652,23 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "only publish single event followed by onCompleted" in {
       val notifications = scheduler.run(Observable.returning("value", scheduler))
 
-      notifications must be equalTo Seq(201 -> OnNext("value"), (202 -> OnCompleted))
+      notifications must be equalTo Seq(201 -> OnNext("value"), (201 -> OnCompleted))
     }
 
-    "stop publishing when subscription is closed" in {
-      val notifications = scheduler.run(Observable.returning("value", scheduler), unsubscribeAt = new Instant(202))
+    "conform to the observable protocol" in {
+      var onNextCalled = false
+      var onCompletedCalled = false
 
-      notifications must be equalTo Seq(201 -> OnNext("value"))
+      val subscription = new MutableCloseable
+      subscription.set(Observable.returning("value", scheduler).subscribe(
+        onNext = _ => {onNextCalled = true; subscription.close()},
+        onCompleted = () => {onCompletedCalled = true}))
+
+      scheduler.run()
+
+      onNextCalled must beTrue
+      onCompletedCalled must beFalse
     }
-
   }
 
   "take n" should {
@@ -825,7 +833,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "republish single value" in {
       val notifications = scheduler.run {Observable.returning("value", scheduler).repeat.take(3)}
 
-      notifications must be equalTo Seq(201 -> OnNext("value"), 203 -> OnNext("value"), 205 -> OnNext("value"), 205 -> OnCompleted)
+      notifications must be equalTo Seq(201 -> OnNext("value"), 202 -> OnNext("value"), 203 -> OnNext("value"), 203 -> OnCompleted)
     }
 
     "repeat source observable" in {
@@ -846,13 +854,13 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "repeat once" in {
       val notifications = scheduler.run {Observable.returning("value", scheduler).repeat(1)}
 
-      notifications must be equalTo Seq(201 -> OnNext("value"), 202 -> OnCompleted)
+      notifications must be equalTo Seq(201 -> OnNext("value"), 201 -> OnCompleted)
     }
 
     "repeat twice" in {
       val notifications = scheduler.run {Observable.returning("value", scheduler).repeat(2)}
 
-      notifications must be equalTo Seq(201 -> OnNext("value"), 203 -> OnNext("value"), 204 -> OnCompleted)
+      notifications must be equalTo Seq(201 -> OnNext("value"), 202 -> OnNext("value"), 202 -> OnCompleted)
     }
   }
 
@@ -944,7 +952,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
       val notifications = scheduler.run(errorSource.catching(rescueSource))
 
-      notifications must be equalTo Seq(202 -> OnNext("catching"), 203 -> OnCompleted)
+      notifications must be equalTo Seq(202 -> OnNext("catching"), 202 -> OnCompleted)
     }
 
     "still subscribe to next source when exception is raised immediately" in {
@@ -953,7 +961,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
       val notifications = scheduler.run(immediateError.catching(rescueSource))
 
-      notifications must be equalTo Seq(201 -> OnNext("catching"), 202 -> OnCompleted)
+      notifications must be equalTo Seq(201 -> OnNext("catching"), 201 -> OnCompleted)
     }
   }
 
