@@ -6,6 +6,7 @@ import org.specs._
 import org.specs.runner.{JUnitSuiteRunner, JUnit}
 import scala.collection._
 import java.util.concurrent.CountDownLatch
+import org.deler.reactive.JodaTimeSupport._
 
 @RunWith(classOf[JUnitSuiteRunner])
 class SchedulingTest extends Specification with JUnit {
@@ -34,11 +35,11 @@ class SchedulingTest extends Specification with JUnit {
       count must be equalTo 1
     }
     "run scheduled action at specified time" in {
-      virtualScheduler.scheduleAfter(new Duration(1000L)) {action(INITIAL.plus(1000))}
+      virtualScheduler.scheduleAfter(1000 milliseconds) {action(INITIAL + 1000.milliseconds)}
 
       virtualScheduler.run
 
-      virtualScheduler.now must be equalTo INITIAL.plus(1000)
+      virtualScheduler.now must be equalTo (INITIAL + 1000.milliseconds)
     }
     "never take the clock backwards" in {
       virtualScheduler.scheduleAt(INITIAL minus 1000) {action(INITIAL)}

@@ -8,6 +8,7 @@ import scala.collection._
 import org.joda.time.{Duration, Instant}
 import org.scalacheck.{Arbitrary, Prop}
 import java.util.concurrent.TimeoutException
+import org.deler.reactive.JodaTimeSupport._
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ObservableTest extends Specification with JUnit with Mockito with ScalaCheck {
@@ -150,7 +151,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val notifications = scheduler run {
         Observable.create {
           observer: Observer[String] =>
-            scheduler.scheduleAfter(new Duration(1000)) {
+            scheduler.scheduleAfter(1000 milliseconds) {
               observer.onNext("ignored")
             }
             () => {}
@@ -175,7 +176,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   "Observable.interval" should {
     "generate a sequence value seperated by duration" in {
-      val notifications = scheduler.run {Observable.interval(new Duration(300), scheduler)}
+      val notifications = scheduler.run {Observable.interval(300 milliseconds, scheduler)}
 
       notifications must be equalTo Seq(500 -> OnNext(0), 800 -> OnNext(1))
     }
@@ -253,14 +254,14 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   "Observable.timer" should {
     "generate zero when expired" in {
-      val notifications = scheduler.run {Observable.timer(new Duration(300), scheduler)}
+      val notifications = scheduler.run {Observable.timer(300 milliseconds, scheduler)}
 
       notifications must be equalTo Seq(500 -> OnNext(0), 500 -> OnCompleted)
     }
 
     "not generate a value when unsubscribed" in {
       val notifications = scheduler.run(
-        Observable.timer(new Duration(300), scheduler),
+        Observable.timer(300 milliseconds, scheduler),
         unsubscribeAt = new Instant(400))
 
       notifications must beEmpty
@@ -277,7 +278,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         450 -> OnNext("after timeout"),
         800 -> OnCompleted))
 
-      val notifications = scheduler.run(source.timeout(new Duration(200), other, scheduler))
+      val notifications = scheduler.run(source.timeout(200 milliseconds, other, scheduler))
 
       notifications must be equalTo Seq(
         300 -> OnNext("first"),
@@ -296,7 +297,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         450 -> OnNext("after timeout"),
         800 -> OnCompleted))
 
-      val notifications = scheduler.run(source.timeout(new Duration(50), other, scheduler))
+      val notifications = scheduler.run(source.timeout(50 milliseconds, other, scheduler))
 
       notifications must be equalTo Seq(
         450 -> OnNext("after timeout"),
@@ -308,7 +309,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "throwing a TimeoutException when no other observable is provided" in {
       val source = scheduler.createHotObservable(Seq(500 -> OnCompleted))
 
-      val notifications = scheduler.run(source.timeout(new Duration(200), scheduler))
+      val notifications = scheduler.run(source.timeout(200 milliseconds, scheduler))
 
       notifications must beLike {
         case Seq(Pair(400, OnError(error))) => error.isInstanceOf[TimeoutException]
@@ -627,7 +628,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   "Observable.toSeq" should {
     "return all values until observable is completed" in {
-      val seq = Observable.interval(new Duration(10)).take(5).toSeq
+      val seq = Observable.interval(10 milliseconds).take(5).toSeq
 
       seq must be equalTo (0 to 4)
     }
