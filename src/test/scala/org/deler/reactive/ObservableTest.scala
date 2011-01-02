@@ -285,6 +285,24 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "Observable.throttle" should {
+    "generate latest value when expired" in {
+      val source = scheduler.createHotObservable(Seq(
+        250 -> OnNext("first"),
+        290 -> OnNext("second"),
+        350 -> OnNext("third"),
+        390 -> OnNext("fourth"),
+        450 -> OnCompleted))
+
+      val notifications = scheduler.run(source.throttle(new Duration(100), scheduler))
+
+      notifications must be equalTo Seq(
+        300 -> OnNext("second"), 
+        400 -> OnNext("fourth"), 
+        450 -> OnCompleted)
+    }
+  }
+
   "Observable.timer" should {
     "generate zero when expired" in {
       val notifications = scheduler.run {Observable.timer(new Duration(300), scheduler)}
