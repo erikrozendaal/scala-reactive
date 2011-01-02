@@ -1,11 +1,12 @@
 package org.deler.reactive
 
 package object swing {
-  import java.awt.{AWTEvent, Component}
+  import java.awt.Component
   import org.deler.reactive.swing._
 
   class ComponentToObservableWrapper(component: Component) {
-    def toObservable[A <: AWTEvent](event: Event[A])
+    // FIXME events: Event[A]*
+    def toObservable[A](event: Event[A])
       (implicit scheduler: Scheduler = Scheduler.currentThread): Observable[A] = 
         ToObservable[A](component, event, scheduler)
   }

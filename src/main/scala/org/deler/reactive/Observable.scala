@@ -258,6 +258,10 @@ trait Observable[+A] {
 
   def zip[B, C](other: Observable[B])(f: (A, B) => C): Observable[C] = Zip(this, other, f)
 
+  def throttle(dueTime: Duration, scheduler: Scheduler = Scheduler.threadPool): Observable[A] = Throttle(this, dueTime, scheduler)
+
+  def distinctUntilChanged: Observable[A] = DistinctUntilChanged(this)
+
   /**
    * Switches to `other` when `this` terminates with an error.
    */
@@ -1035,6 +1039,62 @@ private case class ToObservable[+A](iterable: Iterable[A], scheduler: Scheduler)
           observer.onCompleted()
         }
     }
+  }
+}
+
+private case class Throttle[+A](source: Observable[A], dueTime: Duration, scheduler: Scheduler)
+        extends BaseObservable[A] with ConformingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    var lastValue: Option[A] = None
+
+    val subscription = Observable.interval(dueTime, scheduler)
+      .subscribe { _ => lastValue.foreach(v => { lastValue = None; observer.onNext(v) }) }
+
+    val result = new CompositeCloseable(subscription)
+
+    // FIXME onError + onCompleted copy paste from TakeUntil
+    result += source.subscribe(new DelegateObserver(observer) {
+      override def onNext(value: A) {
+        lastValue = Some(value)
+      }
+
+      override def onError(error: Exception) {
+        subscription.close()
+        super.onError(error)
+      }
+
+      override def onCompleted() {
+        subscription.close()
+        super.onCompleted()
+      }
+    })
+    result
+  }
+}
+
+private case class DistinctUntilChanged[+A](source: Observable[A])
+        extends BaseObservable[A] with ConformingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    var lastValue: Option[A] = None
+    val subscription = new MutableCloseable
+
+    subscription.set(source.subscribe(new Observer[A] {
+      override def onNext(value: A) {
+        if (lastValue.map(_ != value).getOrElse(true)) {
+          observer.onNext(value)
+          lastValue = Some(value)
+        }
+      }
+
+      override def onError(error: Exception) {
+        observer.onError(error)
+      }
+
+      override def onCompleted() {
+        observer.onCompleted()
+      }
+    }))
+    subscription
   }
 }
 
