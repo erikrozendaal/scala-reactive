@@ -1078,20 +1078,12 @@ private case class DistinctUntilChanged[+A](source: Observable[A])
     var lastValue: Option[A] = None
     val subscription = new MutableCloseable
 
-    subscription.set(source.subscribe(new Observer[A] {
+    subscription.set(source.subscribe(new DelegateObserver[A](observer) {
       override def onNext(value: A) {
         if (lastValue.map(_ != value).getOrElse(true)) {
           observer.onNext(value)
           lastValue = Some(value)
         }
-      }
-
-      override def onError(error: Exception) {
-        observer.onError(error)
-      }
-
-      override def onCompleted() {
-        observer.onCompleted()
       }
     }))
     subscription
