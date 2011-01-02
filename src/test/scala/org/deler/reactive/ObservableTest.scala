@@ -251,6 +251,22 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "Observable.skipUntil" should {
+    "not produce any value until other observable sequence produces first value" in {
+      val source = scheduler.createHotObservable(Seq(
+        250 -> OnNext("first"),
+        350 -> OnNext("second"),
+        400 -> OnCompleted))
+      val other = scheduler.createHotObservable(Seq(300 -> OnNext("trigger")))
+
+      val notifications = scheduler.run(source.skipUntil(other))
+
+      notifications must be equalTo Seq(350 -> OnNext("second"), 400 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 400)
+      other.subscriptions must be equalTo Seq(200 -> 400)
+    }
+  }
+
   "Observable.timer" should {
     "generate zero when expired" in {
       val notifications = scheduler.run {Observable.timer(new Duration(300), scheduler)}
