@@ -180,10 +180,16 @@ trait Observable[+A] {
    */
   def take(n: Int): Observable[A] = Take(this, n)
 
+  def drop(n: Int): Observable[A] = Drop(this, n)
+
+  def tail: Observable[A] = drop(1)
+
   /**
    * Takes values from this $coll until the `other` $coll produces a value.
    */
   def takeUntil(other: Observable[Any]): Observable[A] = TakeUntil(this, other)
+
+  def skipUntil(other: Observable[Any]): Observable[A] = SkipUntil(this, other)
 
   /**
    * Returns an $coll that produces values from this $coll until `dueTime`, when it raises a
@@ -249,6 +255,8 @@ trait Observable[+A] {
 
     resultToStream
   }
+
+  def zip[B, C](other: Observable[B])(f: (A, B) => C): Observable[C] = Zip(this, other, f)
 
   /**
    * Switches to `other` when `this` terminates with an error.
@@ -595,6 +603,40 @@ private case class Concat[A, B >: A](left: ConformingObservable[A], right: Confo
   }
 }
 
+private case class Zip[A, B, C](left: ConformingObservable[A], right: ConformingObservable[B], f: (A, B) => C)
+        extends BaseObservable[C] with ConformingObservable[C] {
+  def doSubscribe(observer: Observer[C]): Closeable = {
+    import scala.collection.mutable.Queue
+
+    val leftQueue = Queue[A]() 
+    val rightQueue = Queue[B]() 
+    val subscription1 = new MutableCloseable
+    val subscription2 = new MutableCloseable
+    val subscriptions = new CompositeCloseable(subscription1, subscription2)
+    subscription1.set(left.subscribe(new ZipObserver[A](leftQueue)))
+    subscription2.set(right.subscribe(new ZipObserver[B](rightQueue)))
+
+    class ZipObserver[X](q: Queue[X]) extends Observer[X] {
+      override def onError(error: Exception) {
+        subscriptions.close()
+        observer.onError(error)
+      }
+
+      override def onCompleted() {
+        subscriptions.close()
+        observer.onCompleted()
+      }
+
+      override def onNext(value: X) {
+        q.enqueue(value)
+        if (!leftQueue.isEmpty && !rightQueue.isEmpty) 
+          observer.onNext(f(leftQueue.dequeue, rightQueue.dequeue))
+      }
+    }
+    subscriptions
+  }
+}
+
 private case class Conform[+A](source: Observable[A]) extends ConformedObservable[A] {
   override protected def doSubscribe(observer: Observer[A]): Closeable = source.subscribe(observer)
 
@@ -884,6 +926,25 @@ private case class Take[+A](source: ConformingObservable[A], n: Int)
   override def take(n: Int) = Take(source, this.n.min(n))
 }
 
+private case class Drop[+A](source: ConformingObservable[A], n: Int)
+        extends BaseObservable[A] with ConformingObservable[A] {
+  require(n >= 0, "n >= 0")
+
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val subscription = new MutableCloseable
+    subscription.set(source.subscribe(new DelegateObserver(observer) {
+      var count: Int = 0
+
+      override def onNext(value: A) {
+        if (count < n) {
+          count += 1          
+        } else super.onNext(value)
+      }
+    }))
+    subscription
+  }
+}
+
 private case class TakeUntil[+A](source: Observable[A], other: Observable[Any]) extends SynchronizedObservable[A] {
   def doSubscribe(observer: Observer[A]): Closeable = {
     val otherSubscription = new MutableCloseable
@@ -906,6 +967,47 @@ private case class TakeUntil[+A](source: Observable[A], other: Observable[Any]) 
     }))
 
     result += source.subscribe(new DelegateObserver(observer) {
+      override def onError(error: Exception) {
+        otherSubscription.close()
+        super.onError(error)
+      }
+
+      override def onCompleted() {
+        otherSubscription.close()
+        super.onCompleted()
+      }
+    })
+    result
+  }
+}
+
+private case class SkipUntil[+A](source: Observable[A], other: Observable[Any]) extends SynchronizedObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val otherSubscription = new MutableCloseable
+    val result = new CompositeCloseable(otherSubscription)
+    var otherStarted = false
+
+    otherSubscription.set(other.subscribe(new Observer[Any] {
+      override def onNext(value: Any) {
+        otherStarted = true
+      }
+
+      override def onError(error: Exception) {
+        result.close()
+        observer.onError(error)
+      }
+
+      override def onCompleted() {
+        result -= otherSubscription
+      }
+    }))
+
+    // FIXME onError + onCompleted copy paste from TakeUntil
+    result += source.subscribe(new DelegateObserver(observer) {
+      override def onNext(value: A) {
+        if (otherStarted) super.onNext(value)
+      }
+
       override def onError(error: Exception) {
         otherSubscription.close()
         super.onError(error)
