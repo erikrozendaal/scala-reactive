@@ -768,6 +768,30 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "drop n" should {
+    val sequence = Observable(scheduler, 1, 2, 3, 4)
+
+    "return empty stream and stop when n is n" in {
+      val notifications = scheduler.run(sequence.drop(4))
+      notifications must be equalTo Seq(205 -> OnCompleted)
+    }
+
+    "return empty stream and stop when n is bigger than n" in {
+      val notifications = scheduler.run(sequence.drop(5))
+      notifications must be equalTo Seq(205 -> OnCompleted)
+    }
+
+    "drop the first three values when n = 3" in {
+      val notifications = scheduler.run(sequence.drop(3))
+      notifications must be equalTo Seq(204 -> OnNext(4), 205 -> OnCompleted)
+    }
+
+    "tail drops the first value" in {
+      val notifications = scheduler.run(sequence.tail)
+      notifications must be equalTo Seq(202 -> OnNext(2), 203 -> OnNext(3), 204 -> OnNext(4), 205 -> OnCompleted)
+    }
+  }
+
   "concatenated observables" should {
 
     "be equal to first and second concatenated" in {

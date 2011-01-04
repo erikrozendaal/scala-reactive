@@ -937,7 +937,7 @@ private case class Drop[+A](source: ConformingObservable[A], n: Int)
   def doSubscribe(observer: Observer[A]): Closeable = {
     val subscription = new MutableCloseable
     subscription.set(source.subscribe(new DelegateObserver(observer) {
-      var count: Int = 0
+      var count = 0
 
       override def onNext(value: A) {
         if (count < n) {
