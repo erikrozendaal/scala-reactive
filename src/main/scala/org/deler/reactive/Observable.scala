@@ -970,17 +970,7 @@ private case class TakeUntil[+A](source: Observable[A], other: Observable[Any]) 
       }
     }))
 
-    result += source.subscribe(new DelegateObserver(observer) {
-      override def onError(error: Exception) {
-        otherSubscription.close()
-        super.onError(error)
-      }
-
-      override def onCompleted() {
-        otherSubscription.close()
-        super.onCompleted()
-      }
-    })
+    result += source.subscribe(new CloseOnCompletionDelegateObserver(observer, otherSubscription))
     result
   }
 }
@@ -1006,20 +996,9 @@ private case class SkipUntil[+A](source: Observable[A], other: Observable[Any]) 
       }
     }))
 
-    // FIXME onError + onCompleted copy paste from TakeUntil
-    result += source.subscribe(new DelegateObserver(observer) {
+    result += source.subscribe(new CloseOnCompletionDelegateObserver(observer, otherSubscription) {
       override def onNext(value: A) {
         if (otherStarted) super.onNext(value)
-      }
-
-      override def onError(error: Exception) {
-        otherSubscription.close()
-        super.onError(error)
-      }
-
-      override def onCompleted() {
-        otherSubscription.close()
-        super.onCompleted()
       }
     })
     result
@@ -1051,21 +1030,9 @@ private case class Throttle[+A](source: Observable[A], dueTime: Duration, schedu
       .subscribe { _ => lastValue.foreach(v => { lastValue = None; observer.onNext(v) }) }
 
     val result = new CompositeCloseable(subscription)
-
-    // FIXME onError + onCompleted copy paste from TakeUntil
-    result += source.subscribe(new DelegateObserver(observer) {
+    result += source.subscribe(new CloseOnCompletionDelegateObserver(observer, subscription) {
       override def onNext(value: A) {
         lastValue = Some(value)
-      }
-
-      override def onError(error: Exception) {
-        subscription.close()
-        super.onError(error)
-      }
-
-      override def onCompleted() {
-        subscription.close()
-        super.onCompleted()
       }
     })
     result
@@ -1078,23 +1045,12 @@ private case class DistinctUntilChanged[+A](source: Observable[A])
     var lastValue: Option[A] = None
     val subscription = new MutableCloseable
 
-    // FIXME onError + onCompleted copy paste from TakeUntil
-    subscription.set(source.subscribe(new DelegateObserver[A](observer) {
+    subscription.set(source.subscribe(new CloseOnCompletionDelegateObserver[A](observer, subscription) {
       override def onNext(value: A) {
         if (lastValue.map(_ != value).getOrElse(true)) {
           observer.onNext(value)
           lastValue = Some(value)
         }
-      }
-
-      override def onError(error: Exception) {
-        subscription.close()
-        super.onError(error)
-      }
-
-      override def onCompleted() {
-        subscription.close()
-        super.onCompleted()
       }
     }))
     subscription
