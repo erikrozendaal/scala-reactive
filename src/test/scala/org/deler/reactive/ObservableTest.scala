@@ -541,6 +541,34 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       invoked must beFalse
       notifications must be equalTo Seq(201 -> OnError(ex))
     }
+
+  //   "allow groupBy using a key selector function" in {
+  //     val observable = scheduler.createHotObservable(Seq(
+  //       200 -> OnNext("a"->"too early"),
+  //       201 -> OnNext("b"->"first b"),
+  //       202 -> OnNext("a"->"first a"),
+  //       300 -> OnNext("b"->"second b"),
+  //       500 -> OnCompleted,
+  //       600 -> OnNext("d"->"ignored")))
+  //     var keySelectorInvoked = 0
+  //     var noGroups = 0
+  //     var noAs = 0
+  //     var noBs = 0
+
+  //     val notifications = scheduler run {
+  //       observable.groupBy(n => {
+  //         keySelectorInvoked += 1
+  //         n
+  //       })
+  //     }
+
+  //     notifications must be equalTo Seq(
+  //       201 -> OnNext("first"),
+  //       300 -> OnNext("second"),
+  //       500 -> OnCompleted)
+  //     invoked must be equalTo 2
+  //     observable.subscriptions must be equalTo Seq(200 -> 500)
+  //   }
   }
 
   "Observable.switch" should {

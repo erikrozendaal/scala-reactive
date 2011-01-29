@@ -4,6 +4,8 @@ import reactive.{Observer, Closeable, Scheduler, Observable}
 
 package object reactive {
 
+  type GroupedObservable[K, +A] = (K, Observable[(K, A)])
+
   class IterableToObservableWrapper[+A](iterable: Iterable[A]) {
     def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Closeable = toObservable(scheduler).subscribe(observer)
 

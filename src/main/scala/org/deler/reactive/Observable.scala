@@ -119,7 +119,7 @@ trait Observable[+A] {
   /**
    * A new observable defined by applying a function to all values produced by this observable.
    */
-  def map[B](f: A => B): Observable[B] = Map(this, f)
+  def map[B](f: A => B): Observable[B] = MappedObservable(this, f)
 
   /**
    * A new observable that materializes each notification of this observable as a [[org.deler.reactive.Notification]].
@@ -278,7 +278,13 @@ trait Observable[+A] {
    * when multiple threads push notifications.
    */
   def synchronize: Observable[A] = Synchronize(this)
+
+  // def groupBy[K](key: A => K): Observable[GroupedObservable[K, A]] = error("todo")
 }
+
+//trait GroupedObservable[K, +A] extends Observable[A] {
+//  val key: K
+//}
 
 /**
  * @define coll observable sequence
@@ -627,7 +633,7 @@ private case class Filter[A](source: ConformingObservable[A], predicate: A => Bo
   override def filter(q: A => Boolean): Observable[A] = source.filter(value => predicate(value) && q(value))
 }
 
-private case class Map[A, B](source: ConformingObservable[A], f: A => B)
+private case class MappedObservable[A, B](source: ConformingObservable[A], f: A => B)
         extends BaseObservable[B] with ConformingObservable[B] {
   def doSubscribe(observer: Observer[B]): Closeable = {
     val subscription = new MutableCloseable
