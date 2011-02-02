@@ -1,10 +1,10 @@
 package org.deler.reactive
 
 import java.util.concurrent.atomic.AtomicInteger
-import org.joda.time.Duration
 import scala.collection._
 import scala.concurrent.SyncVar
 import java.util.concurrent.{TimeoutException, LinkedBlockingQueue}
+import org.joda.time.{DateTimeZone, DateTime, Duration}
 
 /**
  * An observable can be subscribed to by an [[org.deler.reactive.Observer]]. Observables produce zero or more values
@@ -410,6 +410,17 @@ object Observable {
      * Merges this observable sequence with `that` observable sequence.
      */
     def merge[B >: A](that: Observable[B]): Observable[B] = Merge(Observable(Scheduler.immediate, observable, that))
+
+    /**
+     * Adds a timestamp to an observable.
+     */
+    def timestamp(scheduler: Scheduler = Scheduler.immediate): TimestampedObservable[A] = {
+      observable map {
+        x => {
+          (scheduler.now, x)
+        }
+      }
+    }
   }
 
   implicit def observableExtensions[A](observable: Observable[A]) = new ObservableExtensions(observable)

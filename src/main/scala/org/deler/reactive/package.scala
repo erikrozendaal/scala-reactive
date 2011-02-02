@@ -1,10 +1,12 @@
 package org.deler
 
 import reactive.{Observer, Closeable, Scheduler, Observable}
+import org.joda.time.Instant
 
 package object reactive {
 
   type GroupedObservable[K, +A] = (K, Observable[(K, A)])
+  type TimestampedObservable[+A] = Observable[(Instant, A)]
 
   class IterableToObservableWrapper[+A](iterable: Iterable[A]) {
     def subscribe(observer: Observer[A], scheduler: Scheduler = Scheduler.currentThread): Closeable = toObservable(scheduler).subscribe(observer)

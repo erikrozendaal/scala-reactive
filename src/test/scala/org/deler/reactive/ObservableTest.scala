@@ -542,6 +542,17 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       notifications must be equalTo Seq(201 -> OnError(ex))
     }
 
+    "allow timestamps to be added by scheduler" in {
+      val plainObservable = Observable(scheduler, "a", "b")
+      val timedObservable = plainObservable.timestamp(scheduler)
+      val timedNotifications = scheduler run timedObservable
+      timedNotifications must be equalTo Seq(
+        201 -> OnNext((new Instant(201), "a")),
+        202 -> OnNext((new Instant(202), "b")),
+        203 -> OnCompleted
+      )
+    }
+
   //   "allow groupBy using a key selector function" in {
   //     val observable = scheduler.createHotObservable(Seq(
   //       200 -> OnNext("a"->"too early"),
