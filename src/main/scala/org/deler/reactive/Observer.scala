@@ -38,6 +38,20 @@ class DelegateObserver[-A](delegate: Observer[A]) extends Observer[A] {
   override def onCompleted() = delegate.onCompleted()
 }
 
+class CloseOnCompletionDelegateObserver[-A](delegate: Observer[A], closeable: Closeable) extends Observer[A] {
+  override def onNext(value: A) = delegate.onNext(value)
+
+  override def onError(error: Exception) = {
+    closeable.close()
+    delegate.onError(error)
+  }
+
+  override def onCompleted() = {
+    closeable.close()
+    delegate.onCompleted()
+  }
+}
+
 /**
  * An observer that schedules all notifications to `delegate` on `scheduler`. Uses an internal queue to avoid
  * slowing down the source observable sequence. Ordering of notifications is preserved.
