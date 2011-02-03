@@ -11,9 +11,7 @@ trait ConnectableObservable[+A] extends Observable[A] {
 
 }
 
-private class PublishConnectableObservable[A](source: ConformingObservable[A], scheduler: Scheduler = Scheduler.immediate)
+private case class PublishConnectableObservable[A](source: ConformingObservable[A], scheduler: Scheduler = Scheduler.immediate)
         extends ScheduledDispatcher[A](scheduler) with ConnectableObservable[A] with ConformingObservable[A] {
   override def connect: Closeable = source.subscribe(this)
-
-  override def toString = "PublishConnectableObservable(" + source + ", " + scheduler + ")"
 }

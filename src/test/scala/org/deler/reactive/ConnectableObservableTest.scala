@@ -4,7 +4,7 @@ import org.junit.runner.RunWith
 import org.specs.runner.{JUnit, JUnitSuiteRunner}
 import org.specs.Specification
 import org.specs.mock.Mockito
-import org.joda.time.{Instant, Duration}
+import org.joda.time.Instant
 
 @RunWith(classOf[JUnitSuiteRunner])
 class ConnectableObservableTest extends Specification with JUnit with Mockito {

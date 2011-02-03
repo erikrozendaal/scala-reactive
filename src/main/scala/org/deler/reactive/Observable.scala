@@ -151,7 +151,7 @@ trait Observable[+A] {
   /**
    * Returns a connectable $coll that shares a single subscription to this $coll.
    */
-  def publish(scheduler: Scheduler): ConnectableObservable[A] = new PublishConnectableObservable(this, scheduler)
+  def publish(scheduler: Scheduler): ConnectableObservable[A] = PublishConnectableObservable(this, scheduler)
 
   /**
    * Returns an $coll that is the result of invoking the `selector` on a connectable observable sequence that shares a
