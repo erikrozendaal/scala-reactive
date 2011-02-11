@@ -6,3 +6,8 @@ target
 *.iml
 *.ipr
 *.iws
+.ensime
+lib_managed
+src_managed
+project/boot
+*~

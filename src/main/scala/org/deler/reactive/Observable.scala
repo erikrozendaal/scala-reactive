@@ -151,7 +151,7 @@ trait Observable[+A] {
   /**
    * Returns a connectable $coll that shares a single subscription to this $coll.
    */
-  def publish(scheduler: Scheduler): ConnectableObservable[A] = new PublishConnectableObservable(this, scheduler)
+  def publish(scheduler: Scheduler): ConnectableObservable[A] = PublishConnectableObservable(this, scheduler)
 
   /**
    * Returns an $coll that is the result of invoking the `selector` on a connectable observable sequence that shares a
@@ -352,10 +352,7 @@ object Observable {
   /**
    * Returns an empty $coll.
    */
-  def empty(scheduler: Scheduler): Observable[Nothing] = createWithCloseable {
-    observer =>
-      scheduler schedule observer.onCompleted()
-  }
+  def empty(scheduler: Scheduler): Observable[Nothing] = Empty(scheduler)
 
   /**
    * Returns a $coll that terminates with `error` using the immediate scheduler.
@@ -365,10 +362,7 @@ object Observable {
   /**
    * Returns a $coll that terminates with `error`.
    */
-  def throwing(error: Exception, scheduler: Scheduler): Observable[Nothing] = createWithCloseable {
-    observer =>
-      scheduler schedule observer.onError(error)
-  }
+  def throwing(error: Exception, scheduler: Scheduler): Observable[Nothing] = Throwing(error, scheduler)
 
   /**
    * Returns a $coll that contains a single `value` using the immediate scheduler.
@@ -378,9 +372,7 @@ object Observable {
   /**
    * Returns a $coll that contains a single `value`.
    */
-  def returning[A](value: A, scheduler: Scheduler): Observable[A] = {
-    Seq(value).toObservable(scheduler)
-  }
+  def returning[A](value: A, scheduler: Scheduler): Observable[A] = Returning(value, scheduler)
 
   /**
    * Returns an infinite $coll that produces a new value each `period` using the thread pool scheduler. The values
@@ -724,6 +716,27 @@ private case class Conform[+A](source: Observable[A]) extends ConformedObservabl
 private case class Dematerialize[+A](source: Observable[Notification[A]]) extends ConformedObservable[A] {
   override protected def doSubscribe(observer: Observer[A]): Closeable =
     source.subscribe(onNext = _.accept(observer), onError = observer.onError, onCompleted = observer.onCompleted)
+}
+
+private case class Empty(scheduler: Scheduler) extends BaseObservable[Nothing] with SynchronizingObservable[Nothing] {
+  override protected def doSubscribe(observer: Observer[Nothing]): Closeable = {
+    scheduler schedule observer.onCompleted()
+  }
+}
+
+private case class Throwing(error: Exception, scheduler: Scheduler) extends BaseObservable[Nothing] with SynchronizingObservable[Nothing] {
+  override protected def doSubscribe(observer: Observer[Nothing]): Closeable = {
+    scheduler schedule observer.onError(error)
+  }
+}
+
+private case class Returning[A](value: A, scheduler: Scheduler) extends ConformedObservable[A] with SynchronizingObservable[A] {
+  override protected def doSubscribe(observer: Observer[A]): Closeable = {
+    scheduler schedule {
+      observer.onNext(value)
+      observer.onCompleted()
+    }
+  }
 }
 
 private case class Filter[A](source: ConformingObservable[A], predicate: A => Boolean)
