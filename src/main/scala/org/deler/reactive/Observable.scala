@@ -180,10 +180,16 @@ trait Observable[+A] {
    */
   def take(n: Int): Observable[A] = Take(this, n)
 
+  def drop(n: Int): Observable[A] = Drop(this, n)
+
+  def tail: Observable[A] = drop(1)
+
   /**
    * Takes values from this $coll until the `other` $coll produces a value.
    */
   def takeUntil(other: Observable[Any]): Observable[A] = TakeUntil(this, other)
+
+  def skipUntil(other: Observable[Any]): Observable[A] = SkipUntil(this, other)
 
   /**
    * Returns an $coll that produces values from this $coll until `dueTime`, when it raises a
@@ -250,6 +256,14 @@ trait Observable[+A] {
     resultToStream
   }
 
+  def zip[B, C](other: Observable[B])(f: (A, B) => C): Observable[C] = Zip(this, other, f)
+
+  def combineLatest[B, C](other: Observable[B])(f: (A, B) => C): Observable[C] = CombineLatest(Cache(this), Cache(other), f)
+
+  def throttle(dueTime: Duration, scheduler: Scheduler = Scheduler.threadPool): Observable[A] = Throttle(this, dueTime, scheduler)
+
+  def distinctUntilChanged: Observable[A] = DistinctUntilChanged(this)
+
   /**
    * Switches to `other` when `this` terminates with an error.
    */
@@ -279,7 +293,7 @@ trait Observable[+A] {
    */
   def synchronize: Observable[A] = Synchronize(this)
 
-  // def groupBy[K](key: A => K): Observable[GroupedObservable[K, A]] = error("todo")
+  // def groupBy[K](keySelector: A => K): Observable[(K, Observable[(K, A)])] = error("todo") // GroupBy(this, keySelector) 
 }
 
 //trait GroupedObservable[K, +A] extends Observable[A] {
@@ -412,15 +426,14 @@ object Observable {
     def merge[B >: A](that: Observable[B]): Observable[B] = Merge(Observable(Scheduler.immediate, observable, that))
 
     /**
-     * Adds a timestamp to an observable.
+     * Adds a timestamp to an observable using the immediate scheduler.
      */
-    def timestamp(scheduler: Scheduler = Scheduler.immediate): TimestampedObservable[A] = {
-      observable map {
-        x => {
-          (scheduler.now, x)
-        }
-      }
-    }
+    def timestamp: Observable[Timestamped[A]] = timestamp(Scheduler.immediate)
+
+    /**
+     * Adds a timestamp to an observable using the specified scheduler.
+     */
+    def timestamp(scheduler: Scheduler): Observable[Timestamped[A]] = observable map {x => Timestamped(scheduler.now, x) }
   }
 
   implicit def observableExtensions[A](observable: Observable[A]) = new ObservableExtensions(observable)
@@ -447,6 +460,10 @@ object Observable {
   implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
 
   implicit private def observableToConformingObservable[A](source: Observable[A]): ConformingObservable[A] = source.conform.asInstanceOf[ConformingObservable[A]]
+}
+
+private trait CachedObservable[+A] extends Observable[A] {
+  def latest: A
 }
 
 private trait ConformingObservable[+A] extends Observable[A] {
@@ -611,6 +628,92 @@ private case class Concat[A, B >: A](left: ConformingObservable[A], right: Confo
     result
   }
 }
+
+// private case class GroupBy[K, A](source: ConformingObservable[A], keySelector: A => K)
+// extends BaseObservable[(K, ConformingObservable[(K, A)])]
+// with ConformingObservable[(K, ConformingObservable[(K, A)])] {
+//   def doSubscribe(observer: Observer[(K, Observable[(K, A)])]): Closeable = {
+//     val groupSubscription = new MutableCloseable
+//     groupSubscription.set(source.subscribe(new Observer[A] {
+//       override def onNext(value: A) {
+
+//       }
+//       override def onError(error: Exception) = observer.onError(error)
+
+//       override def onCompleted() = observer.onCompleted()
+//     }))
+//     groupSubscription
+//   }
+// }
+
+
+private case class Zip[A, B, C](left: ConformingObservable[A], right: ConformingObservable[B], f: (A, B) => C)
+        extends BaseObservable[C] with ConformingObservable[C] {
+  def doSubscribe(observer: Observer[C]): Closeable = {
+    import scala.collection.mutable.Queue
+
+    val leftQueue = Queue[A]() 
+    val rightQueue = Queue[B]() 
+    val subscription1 = new MutableCloseable
+    val subscription2 = new MutableCloseable
+    val subscriptions = new CompositeCloseable(subscription1, subscription2)
+    subscription1.set(left.subscribe(new ZipObserver[A](leftQueue)))
+    subscription2.set(right.subscribe(new ZipObserver[B](rightQueue)))
+
+    class ZipObserver[X](q: Queue[X]) extends Observer[X] {
+      override def onError(error: Exception) = subscriptions.synchronizeClose {
+        observer.onError(error)
+      }
+
+      override def onCompleted() = subscriptions.synchronizeClose {
+        observer.onCompleted()
+      }
+
+      override def onNext(value: X) = subscriptions.synchronizeIfNotClosed {
+        q.enqueue(value)
+        if (!leftQueue.isEmpty && !rightQueue.isEmpty) {
+          observer.onNext(f(leftQueue.dequeue, rightQueue.dequeue))
+        }
+      }
+    }
+    subscriptions
+  }
+}
+
+private case class CombineLatest[A, B, C](left: CachedObservable[A], right: CachedObservable[B], f: (A, B) => C)
+extends BaseObservable[C] with ConformingObservable[C] {
+  def doSubscribe(observer: Observer[C]): Closeable = {
+    val leftSubscription = new MutableCloseable
+    val rightSubscription = new MutableCloseable
+    val subscriptions = new CompositeCloseable(leftSubscription, rightSubscription)
+    leftSubscription.set(left.subscribe(new LatestObserver(combineWithRight)))
+    rightSubscription.set(right.subscribe(new LatestObserver(combineWithLeft)))
+
+    def combineWithLeft(rightValue: B) {
+      val leftValue = left.latest
+      if (leftValue != null) observer.onNext(f(leftValue, rightValue))
+    }
+
+    def combineWithRight(leftValue: A) {
+      val rightValue = right.latest
+      if (rightValue != null) observer.onNext(f(leftValue, rightValue))
+    }
+
+    class LatestObserver[X](combineOnNext: X => Unit) extends Observer[X] {
+      override def onError(error: Exception) = subscriptions.synchronizeClose {
+        observer.onError(error)
+      }
+
+      override def onCompleted() = subscriptions.synchronizeClose {
+        observer.onCompleted()
+      }
+
+      override def onNext(value: X) = subscriptions.synchronizeIfNotClosed { combineOnNext(value) }
+    }
+    subscriptions
+  }
+}
+
 
 private case class Conform[+A](source: Observable[A]) extends ConformedObservable[A] {
   override protected def doSubscribe(observer: Observer[A]): Closeable = source.subscribe(observer)
@@ -901,6 +1004,25 @@ private case class Take[+A](source: ConformingObservable[A], n: Int)
   override def take(n: Int) = Take(source, this.n.min(n))
 }
 
+private case class Drop[+A](source: ConformingObservable[A], n: Int)
+        extends BaseObservable[A] with ConformingObservable[A] {
+  require(n >= 0, "n >= 0")
+
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val subscription = new MutableCloseable
+    subscription.set(source.subscribe(new DelegateObserver(observer) {
+      var count = 0
+
+      override def onNext(value: A) {
+        if (count < n) {
+          count += 1          
+        } else super.onNext(value)
+      }
+    }))
+    subscription
+  }
+}
+
 private case class TakeUntil[+A](source: Observable[A], other: Observable[Any]) extends SynchronizedObservable[A] {
   def doSubscribe(observer: Observer[A]): Closeable = {
     val otherSubscription = new MutableCloseable
@@ -922,15 +1044,35 @@ private case class TakeUntil[+A](source: Observable[A], other: Observable[Any]) 
       }
     }))
 
-    result += source.subscribe(new DelegateObserver(observer) {
+    result += source.subscribe(new CloseOnCompletionDelegateObserver(observer, otherSubscription))
+    result
+  }
+}
+
+private case class SkipUntil[+A](source: Observable[A], other: Observable[Any]) extends SynchronizedObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val otherSubscription = new MutableCloseable
+    val result = new CompositeCloseable(otherSubscription)
+    var otherStarted = false
+
+    otherSubscription.set(other.subscribe(new Observer[Any] {
+      override def onNext(value: Any) {
+        otherStarted = true
+      }
+
       override def onError(error: Exception) {
-        otherSubscription.close()
-        super.onError(error)
+        result.close()
+        observer.onError(error)
       }
 
       override def onCompleted() {
-        otherSubscription.close()
-        super.onCompleted()
+        result -= otherSubscription
+      }
+    }))
+
+    result += source.subscribe(new CloseOnCompletionDelegateObserver(observer, otherSubscription) {
+      override def onNext(value: A) {
+        if (otherStarted) super.onNext(value)
       }
     })
     result
@@ -953,6 +1095,59 @@ private case class ToObservable[+A](iterable: Iterable[A], scheduler: Scheduler)
   }
 }
 
+private case class Throttle[+A](source: Observable[A], dueTime: Duration, scheduler: Scheduler)
+        extends BaseObservable[A] with ConformingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    var lastValue: Option[A] = None
+
+    val subscription = Observable.interval(dueTime, scheduler)
+      .subscribe { _ => lastValue.foreach(v => { lastValue = None; observer.onNext(v) }) }
+
+    val result = new CompositeCloseable(subscription)
+    result += source.subscribe(new CloseOnCompletionDelegateObserver(observer, subscription) {
+      override def onNext(value: A) {
+        lastValue = Some(value)
+      }
+    })
+    result
+  }
+}
+
+private case class DistinctUntilChanged[+A](source: Observable[A])
+        extends BaseObservable[A] with ConformingObservable[A] {
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    var lastValue: Option[A] = None
+    val subscription = new MutableCloseable
+
+    subscription.set(source.subscribe(new CloseOnCompletionDelegateObserver[A](observer, subscription) {
+      override def onNext(value: A) {
+        if (lastValue.map(_ != value).getOrElse(true)) {
+          observer.onNext(value)
+          lastValue = Some(value)
+        }
+      }
+    }))
+    subscription
+  }
+}
+
 private case class Synchronize[+A](source: Observable[A]) extends SynchronizedObservable[A] {
   override def doSubscribe(observer: Observer[A]): Closeable = source.subscribe(observer)
+}
+
+private case class Cache[A](source: Observable[A])
+extends BaseObservable[A] with ConformingObservable[A] with CachedObservable[A] {
+  import java.util.concurrent.atomic.AtomicReference
+  private val lastValue = new AtomicReference[A]
+  def doSubscribe(observer: Observer[A]): Closeable = {
+    val subscription = new MutableCloseable
+    subscription.set(source.subscribe(new CloseOnCompletionDelegateObserver[A](observer, subscription) {
+      override def onNext(value: A) {
+        lastValue.set(value)
+        observer.onNext(value)
+      }
+    }))
+    subscription
+  }
+  def latest: A = lastValue.get
 }

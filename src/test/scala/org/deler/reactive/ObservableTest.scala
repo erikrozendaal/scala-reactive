@@ -251,6 +251,58 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "Observable.skipUntil" should {
+    "not produce any value until other observable sequence produces first value" in {
+      val source = scheduler.createHotObservable(Seq(
+        250 -> OnNext("first"),
+        350 -> OnNext("second"),
+        400 -> OnCompleted))
+      val other = scheduler.createHotObservable(Seq(300 -> OnNext("trigger")))
+
+      val notifications = scheduler.run(source.skipUntil(other))
+
+      notifications must be equalTo Seq(350 -> OnNext("second"), 400 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 400)
+      other.subscriptions must be equalTo Seq(200 -> 400)
+    }
+  }
+
+  "Observable.distinctUntilChanged" should {
+    "not produce any value until the value changes" in {
+      val source = scheduler.createHotObservable(Seq(
+        250 -> OnNext("first"),
+        300 -> OnNext("first"),
+        350 -> OnNext("second"),
+        400 -> OnCompleted))
+
+      val notifications = scheduler.run(source.distinctUntilChanged)
+
+      notifications must be equalTo Seq(
+        250 -> OnNext("first"), 
+        350 -> OnNext("second"), 
+        400 -> OnCompleted)
+      source.subscriptions must be equalTo Seq(200 -> 400)
+    }
+  }
+
+  "Observable.throttle" should {
+    "generate latest value when expired" in {
+      val source = scheduler.createHotObservable(Seq(
+        250 -> OnNext("first"),
+        290 -> OnNext("second"),
+        350 -> OnNext("third"),
+        390 -> OnNext("fourth"),
+        450 -> OnCompleted))
+
+      val notifications = scheduler.run(source.throttle(new Duration(100), scheduler))
+
+      notifications must be equalTo Seq(
+        300 -> OnNext("second"), 
+        400 -> OnNext("fourth"), 
+        450 -> OnCompleted)
+    }
+  }
+
   "Observable.timer" should {
     "generate zero when expired" in {
       val notifications = scheduler.run {Observable.timer(new Duration(300), scheduler)}
@@ -547,8 +599,8 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val timedObservable = plainObservable.timestamp(scheduler)
       val timedNotifications = scheduler run timedObservable
       timedNotifications must be equalTo Seq(
-        201 -> OnNext((new Instant(201), "a")),
-        202 -> OnNext((new Instant(202), "b")),
+        201 -> OnNext(Timestamped(new Instant(201), "a")),
+        202 -> OnNext(Timestamped(new Instant(202), "b")),
         203 -> OnCompleted
       )
     }
@@ -752,6 +804,30 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
       ns1 must be equalTo Seq(201 -> OnNext(1), 201 -> OnCompleted)
       ns2 must be equalTo Seq(1002 -> OnNext(1), 1002 -> OnCompleted)
+    }
+  }
+
+  "drop n" should {
+    val sequence = Observable(scheduler, 1, 2, 3, 4)
+
+    "return empty stream and stop when n is n" in {
+      val notifications = scheduler.run(sequence.drop(4))
+      notifications must be equalTo Seq(205 -> OnCompleted)
+    }
+
+    "return empty stream and stop when n is bigger than n" in {
+      val notifications = scheduler.run(sequence.drop(5))
+      notifications must be equalTo Seq(205 -> OnCompleted)
+    }
+
+    "drop the first three values when n = 3" in {
+      val notifications = scheduler.run(sequence.drop(3))
+      notifications must be equalTo Seq(204 -> OnNext(4), 205 -> OnCompleted)
+    }
+
+    "tail drops the first value" in {
+      val notifications = scheduler.run(sequence.tail)
+      notifications must be equalTo Seq(202 -> OnNext(2), 203 -> OnNext(3), 204 -> OnNext(4), 205 -> OnCompleted)
     }
   }
 
@@ -1076,4 +1152,57 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
   }
 
+  "Observable.zip" should {
+    "consume both streams in step" in {
+      val first = scheduler.createHotObservable(Seq(
+        290 -> OnNext("f1"),
+        350 -> OnNext("f2"),
+        400 -> OnNext("f3"),
+        450 -> OnCompleted))
+      val second = scheduler.createHotObservable(Seq(
+        300 -> OnNext("s1"),
+        320 -> OnNext("s2"),
+        340 -> OnNext("s3"),
+        450 -> OnCompleted))
+
+      val notifications = scheduler.run(first.zip(second)((x, y) => (x, y)))
+
+      notifications must be equalTo Seq(
+        300 -> OnNext("f1", "s1"),
+        350 -> OnNext("f2", "s2"),
+        400 -> OnNext("f3", "s3"),
+        450 -> OnCompleted)
+
+      first.subscriptions must be equalTo Seq(200 -> 450)
+      second.subscriptions must be equalTo Seq(200 -> 450)
+    }
+  }
+
+  "Observable.combineLatest" should {
+    "consume both streams when either update" in {
+      val first = scheduler.createHotObservable(Seq(
+        290 -> OnNext("f1"),
+        350 -> OnNext("f2"),
+        400 -> OnNext("f3"),
+        450 -> OnCompleted))
+      val second = scheduler.createHotObservable(Seq(
+        300 -> OnNext("s1"),
+        320 -> OnNext("s2"),
+        340 -> OnNext("s3"),
+        450 -> OnCompleted))
+
+      val notifications = scheduler.run(first.combineLatest(second)((x, y) => (x, y)))
+
+      notifications must be equalTo Seq(
+        300 -> OnNext("f1", "s1"),
+        320 -> OnNext("f1", "s2"),
+        340 -> OnNext("f1", "s3"),
+        350 -> OnNext("f2", "s3"),
+        400 -> OnNext("f3", "s3"),
+        450 -> OnCompleted)
+
+      first.subscriptions must be equalTo Seq(200 -> 450)
+      second.subscriptions must be equalTo Seq(200 -> 450)
+    }
+  }
 }

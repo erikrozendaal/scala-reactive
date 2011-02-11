@@ -6,6 +6,11 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.{ThreadFactory, Executors, ScheduledThreadPoolExecutor, TimeUnit}
 
 /**
+ * A timestamped observable value.
+ */
+case class Timestamped[+A](timestamp: Instant, value: A)
+
+/**
  * A scheduler is used to schedule work. Various standard schedulers are provided.
  */
 trait Scheduler {
