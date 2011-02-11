@@ -177,7 +177,7 @@ class CompositeCloseable(initial: Closeable*) extends Closeable
 
   /**
    * Synchronizes an action only if subscriptions are not closed.
-   */ 
+   */
   def synchronizeIfNotClosed(action: => Unit): Unit = synchronized {
     if (!_closed) action
   }
