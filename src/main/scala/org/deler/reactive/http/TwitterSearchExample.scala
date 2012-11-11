@@ -8,15 +8,14 @@ import org.deler.reactive.Observable._
 import org.deler.reactive.swing._
 import com.ning.http.client._
 import net.liftweb.json._
-import net.liftweb.json.JsonAST._
 import org.joda.time.Duration
 
-object TwitterSearchExample extends Application {
+object TwitterSearchExample extends App {
   val f = new JFrame("Twitter search example")
   f.setSize(400, 350)
   val content = f.getContentPane
   content.setBackground(Color.white)
-  val query = new JTextField 
+  val query = new JTextField
   val view = new ListView
   content.add(BorderLayout.NORTH, query)
   content.add(BorderLayout.CENTER, view)
@@ -28,7 +27,7 @@ object TwitterSearchExample extends Application {
 
   def searchTwitter(term: String): Observable[List[String]] = {
     val url = "http://search.twitter.com/search.json?q=" + term
-    http.prepareGet(url).toObservable.map { resp => 
+    http.prepareGet(url).toObservable.map { resp =>
       val json = JsonParser.parse(resp.getResponseBody)
       for { JField("text", JString(t)) <- json } yield t
     }

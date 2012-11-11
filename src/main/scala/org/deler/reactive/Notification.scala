@@ -28,7 +28,7 @@ case class OnError(error: Exception) extends Notification[Nothing] {
 /**
  * Notification indicating the next value of an [[org.deler.reactive.Observable]].
  */
-case class OnNext[A](value: A) extends Notification[A] {
+case class OnNext[+A](value: A) extends Notification[A] {
   def accept(observer: Observer[A]) {
     observer.onNext(value)
   }

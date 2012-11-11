@@ -3,7 +3,7 @@ package org.deler.reactive.example
 import org.deler.reactive.{Scheduler, Observable}
 import org.joda.time.{LocalDateTime, Duration}
 
-object Interval extends Application {
+object Interval extends App {
   val observable = Observable.interval(new Duration(333))
 
   observable subscribe { n =>

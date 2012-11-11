@@ -279,8 +279,8 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val notifications = scheduler.run(source.distinctUntilChanged)
 
       notifications must be equalTo Seq(
-        250 -> OnNext("first"), 
-        350 -> OnNext("second"), 
+        250 -> OnNext("first"),
+        350 -> OnNext("second"),
         400 -> OnCompleted)
       source.subscriptions must be equalTo Seq(200 -> 400)
     }
@@ -298,8 +298,8 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val notifications = scheduler.run(source.throttle(new Duration(100), scheduler))
 
       notifications must be equalTo Seq(
-        300 -> OnNext("second"), 
-        400 -> OnNext("fourth"), 
+        300 -> OnNext("second"),
+        400 -> OnNext("fourth"),
         450 -> OnCompleted)
     }
   }

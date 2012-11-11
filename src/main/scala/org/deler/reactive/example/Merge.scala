@@ -3,7 +3,7 @@ package org.deler.reactive.example
 import org.deler.reactive.Observable
 import org.joda.time.{LocalDateTime, Duration}
 
-object Merge extends Application {
+object Merge extends App {
   val every200ms = Observable.interval(new Duration(200)).map(n => "timer 1, tick " + n)
   val every300ms = Observable.interval(new Duration(300)).map(n => "timer 2, tick " + n)
 

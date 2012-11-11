@@ -258,7 +258,7 @@ class VirtualScheduler(initialNow: Instant = new Instant(100)) extends Scheduler
 class TestObserver[T](scheduler: Scheduler) extends Observer[T] {
   private var _notifications = immutable.Queue[(Int, Notification[T])]()
 
-  def notifications = _notifications.toSeq
+  def notifications: Seq[(Int, Notification[T])] = _notifications.toSeq
 
   override def onCompleted() {
     _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnCompleted)
@@ -397,7 +397,7 @@ private case class ScheduledAction(time: Instant, sequence: Long, action: () => 
 
 private[reactive] class Schedule {
   private var sequence: Long = 0L
-  private var schedule = SortedSet[ScheduledAction]()
+  private var schedule = immutable.SortedSet[ScheduledAction]()
 
   def enqueue(time: Instant, action: () => Unit): Closeable = {
     val scheduled = new ScheduledAction(time, sequence, action)
