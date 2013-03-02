@@ -35,7 +35,7 @@ class SchedulingTest extends Specification with JUnit {
       count must be equalTo 1
     }
     "run scheduled action at specified time" in {
-      virtualScheduler.scheduleAfter(1000 milliseconds) {action(INITIAL + 1000.milliseconds)}
+      virtualScheduler.scheduleAfter(1000.milliseconds) {action(INITIAL + 1000.milliseconds)}
 
       virtualScheduler.run
 

@@ -93,7 +93,7 @@ trait Observable[+A] {
    */
   def first: A = {
     val result = new SyncVar[Notification[A]]
-    this.materialize.take(1).subscribe(result.set(_))
+    this.materialize.take(1).subscribe(result.put _)
     result.get match {
       case OnNext(value) => value
       case OnError(error) => throw error
@@ -286,14 +286,13 @@ trait Observable[+A] {
   /**
    * Forces this $coll to conform to the $coll contract.
    */
-  def conform: Observable[A] = Conform(this)
+  private[reactive] def conform: ConformingObservable[A] = Conform(this)
 
   /**
    * Forces this $coll to conform to the $coll contract and ensures that all notifications are serialized even
    * when multiple threads push notifications.
    */
-  def synchronize: Observable[A] = Synchronize(this)
-
+  private[reactive] def synchronize: SynchronizingObservable[A] = Synchronize(this)
 }
 
 /**
@@ -407,7 +406,7 @@ object Observable {
       }
   }
 
-  class ObservableExtensions[A](observable: Observable[A]) {
+  implicit class ObservableExtensions[A](observable: Observable[A]) {
     /**
      * Merges this observable sequence with `that` observable sequence.
      */
@@ -424,9 +423,7 @@ object Observable {
     def timestamp(scheduler: Scheduler): Observable[Timestamped[A]] = observable map {x => Timestamped(scheduler.now, x)}
   }
 
-  implicit def observableExtensions[A](observable: Observable[A]) = new ObservableExtensions(observable)
-
-  class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
+  implicit class NestedObservableWrapper[A](source: Observable[Observable[A]]) {
     /**
      * Merges an observable sequence of observable sequences into an observable sequence.
      */
@@ -439,14 +436,11 @@ object Observable {
     def switch: Observable[A] = Switch(source)
   }
 
-  implicit def nestedObservableWrapper[A](source: Observable[Observable[A]]) = new NestedObservableWrapper(source)
-
-  class DematerializeObservableWrapper[A](source: Observable[Notification[A]]) {
+  implicit class DematerializeObservableWrapper[A](source: Observable[Notification[A]]) {
     def dematerialize: Observable[A] = Dematerialize(source)
   }
 
-  implicit def dematerializeObservableWrapper[A](source: Observable[Notification[A]]) = new DematerializeObservableWrapper(source)
-
+  import scala.language.implicitConversions
   implicit private def observableToConformingObservable[A](source: Observable[A]): ConformingObservable[A] = source.conform.asInstanceOf[ConformingObservable[A]]
 }
 
@@ -455,11 +449,11 @@ private trait CachedObservable[+A] extends Observable[A] {
 }
 
 private trait ConformingObservable[+A] extends Observable[A] {
-  override def conform: Observable[A] = this
+  override private[reactive] def conform: ConformingObservable[A] = this
 }
 
 private trait SynchronizingObservable[+A] extends ConformingObservable[A] {
-  override def synchronize: Observable[A] = this
+  override private[reactive] def synchronize: SynchronizingObservable[A] = this
 }
 
 private abstract class BaseObservable[+A] extends Observable[A] {
@@ -688,7 +682,7 @@ private case class CombineLatest[A, B, C](left: CachedObservable[A], right: Cach
 private case class Conform[+A](source: Observable[A]) extends ConformedObservable[A] {
   override protected def doSubscribe(observer: Observer[A]): Closeable = source.subscribe(observer)
 
-  override def synchronize: Observable[A] = source.synchronize
+  override private[reactive] def synchronize: SynchronizingObservable[A] = source.synchronize
 }
 
 private case class Dematerialize[+A](source: Observable[Notification[A]]) extends ConformedObservable[A] {

@@ -261,15 +261,15 @@ class TestObserver[T](scheduler: Scheduler) extends Observer[T] {
   def notifications: Seq[(Int, Notification[T])] = _notifications.toSeq
 
   override def onCompleted() {
-    _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnCompleted)
+    _notifications = _notifications.enqueue((scheduler.now.getMillis.toInt, OnCompleted))
   }
 
   override def onError(error: Exception) {
-    _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnError(error))
+    _notifications = _notifications.enqueue((scheduler.now.getMillis.toInt, OnError(error)))
   }
 
   override def onNext(value: T) {
-    _notifications = _notifications enqueue (scheduler.now.getMillis.toInt, OnNext(value))
+    _notifications = _notifications.enqueue((scheduler.now.getMillis.toInt, OnNext(value)))
   }
 }
 
