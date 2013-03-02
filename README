@@ -29,5 +29,5 @@ See the unit tests and the org.deler.reactive.examples package for some examples
 LIMITATIONS
 -----------
 
-- Many combinators still missing (drop*, publish, replay, etc).
+- Many combinators still missing.
 - No integration yet with Java/Scala APIs (NIO, futures, actors, Swing, Servlets, etc).
