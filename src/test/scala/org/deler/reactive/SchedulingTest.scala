@@ -1,15 +1,14 @@
 package org.deler.reactive
 
 import org.joda.time._
-import org.junit.runner.RunWith
-import org.specs._
-import org.specs.runner.{JUnitSuiteRunner, JUnit}
-import scala.collection._
+import scala.collection.immutable
 import java.util.concurrent.CountDownLatch
 import org.deler.reactive.JodaTimeSupport._
 
-@RunWith(classOf[JUnitSuiteRunner])
-class SchedulingTest extends Specification with JUnit {
+@org.junit.runner.RunWith(classOf[org.specs2.runner.JUnitRunner])
+class SchedulingTest extends Test {
+  isolated
+
   val INITIAL = new Instant(100)
 
   val virtualScheduler = new VirtualScheduler(INITIAL) with LoggingScheduler

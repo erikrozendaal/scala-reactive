@@ -1,12 +1,9 @@
 package org.deler.reactive
 
-import org.junit.runner.RunWith
-import org.specs.runner.{JUnit, JUnitSuiteRunner}
-import org.specs.Specification
-import org.specs.mock.Mockito
+@org.junit.runner.RunWith(classOf[org.specs2.runner.JUnitRunner])
+class CloseableTest extends Test {
+  isolated
 
-@RunWith(classOf[JUnitSuiteRunner])
-class CloseableTest extends Specification with JUnit with Mockito {
   "BooleanCloseable" should {
     val subject = new BooleanCloseable
     "not be closed initially" in {

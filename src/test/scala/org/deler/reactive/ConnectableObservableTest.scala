@@ -1,13 +1,11 @@
 package org.deler.reactive
 
-import org.junit.runner.RunWith
-import org.specs.runner.{JUnit, JUnitSuiteRunner}
-import org.specs.Specification
-import org.specs.mock.Mockito
 import org.joda.time.Instant
 
-@RunWith(classOf[JUnitSuiteRunner])
-class ConnectableObservableTest extends Specification with JUnit with Mockito {
+@org.junit.runner.RunWith(classOf[org.specs2.runner.JUnitRunner])
+class ConnectableObservableTest extends Test {
+  isolated
+
   val scheduler = new TestScheduler
 
   "PublishConnectableObservable" should {

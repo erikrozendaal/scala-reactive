@@ -1,17 +1,14 @@
 package org.deler.reactive
 
-import org.junit.runner.RunWith
-import org.specs._
-import org.specs.mock.Mockito
-import org.specs.runner.{JUnitSuiteRunner, JUnit}
-import scala.collection._
-import org.joda.time.{Duration, Instant}
-import org.scalacheck.{Arbitrary, Prop}
+import scala.collection.mutable
+import org.joda.time.{ Duration, Instant }
+import org.scalacheck.{ Arbitrary, Prop }
 import java.util.concurrent.TimeoutException
 import org.deler.reactive.JodaTimeSupport._
 
-@RunWith(classOf[JUnitSuiteRunner])
-class ObservableTest extends Specification with JUnit with Mockito with ScalaCheck {
+@org.junit.runner.RunWith(classOf[org.specs2.runner.JUnitRunner])
+class ObservableTest extends Test {
+  isolated
 
   val ex = new Exception("dummy exception")
 
@@ -19,7 +16,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
   val observer = new TestObserver[String](scheduler)
 
   /**
-   * Generate arbitrary sequences for use with ScalaCheck.
+   * Generate arbitrary observables for use with ScalaCheck.
    */
   implicit def arbitraryObservable[T](implicit a: Arbitrary[List[T]]): Arbitrary[Observable[T]] = Arbitrary {
     for (s <- Arbitrary.arbitrary[List[T]]) yield s.toObservable
@@ -113,7 +110,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
     "invoke delegate's result when subscription is closed" in {
       var actionCalled = false
-      val observable = Observable.create[String] {observer => () => actionCalled = true}
+      val observable = Observable.create[String] { observer => () => actionCalled = true }
       val subscription = observable.subscribe(observer)
 
       subscription.close()
@@ -166,7 +163,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       Observable.create {
         observer: Observer[String] =>
           observer.onCompleted()
-          () => {closed = true}
+          () => { closed = true }
       }.subscribe(observer)
 
       closed must beTrue
@@ -176,7 +173,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   "Observable.interval" should {
     "generate a sequence value seperated by duration" in {
-      val notifications = scheduler.run {Observable.interval(300.milliseconds, scheduler)}
+      val notifications = scheduler.run { Observable.interval(300.milliseconds, scheduler) }
 
       notifications must be equalTo Seq(500 -> OnNext(0), 800 -> OnNext(1))
     }
@@ -306,7 +303,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   "Observable.timer" should {
     "generate zero when expired" in {
-      val notifications = scheduler.run {Observable.timer(300.milliseconds, scheduler)}
+      val notifications = scheduler.run { Observable.timer(300.milliseconds, scheduler) }
 
       notifications must be equalTo Seq(500 -> OnNext(0), 500 -> OnCompleted)
     }
@@ -364,7 +361,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val notifications = scheduler.run(source.timeout(200.milliseconds, scheduler))
 
       notifications must beLike {
-        case Seq(Pair(400, OnError(error))) => error.isInstanceOf[TimeoutException]
+        case Seq(Pair(400, OnError(error))) => error must beAnInstanceOf[TimeoutException]
       }
       source.subscriptions must be equalTo Seq(200 -> 400)
     }
@@ -425,7 +422,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val observable = Observable(scheduler, 1, "string")
 
       val notifications = scheduler run {
-        observable.collect {case x: String => x.reverse}
+        observable.collect { case x: String => x.reverse }
       }
 
       notifications must be equalTo Seq(202 -> OnNext("gnirts"), 203 -> OnCompleted)
@@ -452,7 +449,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
 
     "handle error on exception in map function" in {
-      val notifications = scheduler run {Observable(scheduler, "value").map(_ => throw ex)}
+      val notifications = scheduler run { Observable(scheduler, "value").map(_ => throw ex) }
 
       notifications must be equalTo Seq(201 -> OnError(ex))
     }
@@ -492,7 +489,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
 
     "handle error on exception in filter predicate" in {
-      val notifications = scheduler run {Observable(scheduler, "value").filter(_ => throw ex)}
+      val notifications = scheduler run { Observable(scheduler, "value").filter(_ => throw ex) }
 
       notifications must be equalTo Seq(201 -> OnError(ex))
     }
@@ -541,7 +538,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "stop merge on unsubscribe" in {
       val observables = Observable(scheduler, Observable(scheduler, "a", "b"), Observable(scheduler, "c", "d"))
 
-      val notifications = scheduler.run({observables.merge}, unsubscribeAt = new Instant(204))
+      val notifications = scheduler.run({ observables.merge }, unsubscribeAt = new Instant(204))
 
       notifications must be equalTo Seq(
         202 -> OnNext("a"),
@@ -573,7 +570,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       val values = mutable.ListBuffer[String]()
 
       val notifications = scheduler run {
-        observable perform {v => values += v; count += 1}
+        observable perform { v => values += v; count += 1 }
       }
 
       count must be equalTo 2
@@ -602,8 +599,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       timedNotifications must be equalTo Seq(
         201 -> OnNext(Timestamped(new Instant(201), "a")),
         202 -> OnNext(Timestamped(new Instant(202), "b")),
-        203 -> OnCompleted
-      )
+        203 -> OnCompleted)
     }
   }
 
@@ -679,7 +675,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "throw an exception on error" in {
       val error: Observable[String] = Observable.throwing(ex)
 
-      error.first must throwException(ex)
+      error.first must throwA(ex)
     }
 
     "throw an exception when the observable is empty" in {
@@ -725,8 +721,8 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
       val subscription = new MutableCloseable
       subscription.set(Observable.returning("value", scheduler).subscribe(
-        onNext = _ => {onNextCalled = true; subscription.close()},
-        onCompleted = () => {onCompletedCalled = true}))
+        onNext = _ => { onNextCalled = true; subscription.close() },
+        onCompleted = () => { onCompletedCalled = true }))
 
       scheduler.run()
 
@@ -814,8 +810,8 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   "concatenated observables" should {
 
-    "be equal to first and second concatenated" in {
-      Prop.forAll {(o1: Observable[Int], o2: Observable[Int]) => (o1 ++ o2).toSeq == (o1.toSeq ++ o2.toSeq)} must pass
+    "be equal to first and second concatenated" in prop { (o1: Observable[Int], o2: Observable[Int]) =>
+      (o1 ++ o2).toSeq == (o1.toSeq ++ o2.toSeq)
     }
 
     "should subscribe to second when first completes" in {
@@ -829,7 +825,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         500 -> OnCompleted,
         600 -> OnNext("illegal")))
 
-      val notifications = scheduler run {first ++ second}
+      val notifications = scheduler run { first ++ second }
 
       notifications must be equalTo Seq(
         300 -> OnNext("first"),
@@ -848,7 +844,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         400 -> OnNext("ignored"),
         500 -> OnCompleted))
 
-      val notifications = scheduler run {first ++ second}
+      val notifications = scheduler run { first ++ second }
 
       notifications must be equalTo Seq(
         300 -> OnNext("first"),
@@ -866,7 +862,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         400 -> OnNext("ignored"),
         500 -> OnCompleted))
 
-      val notifications = scheduler.run({first ++ second}, unsubscribeAt = new Instant(350))
+      val notifications = scheduler.run({ first ++ second }, unsubscribeAt = new Instant(350))
 
       notifications must be equalTo Seq(
         300 -> OnNext("first"))
@@ -883,7 +879,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
         400 -> OnNext("second"),
         500 -> OnCompleted))
 
-      val notifications = scheduler.run({first ++ second}, unsubscribeAt = new Instant(450))
+      val notifications = scheduler.run({ first ++ second }, unsubscribeAt = new Instant(450))
 
       notifications must be equalTo Seq(
         300 -> OnNext("first"),
@@ -913,19 +909,19 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
 
     "not publish anything when source is empty" in {
-      val notifications = scheduler.run {Observable.empty(scheduler).repeat}
+      val notifications = scheduler.run { Observable.empty(scheduler).repeat }
 
       notifications must beEmpty
     }
 
     "republish single value" in {
-      val notifications = scheduler.run {Observable.returning("value", scheduler).repeat.take(3)}
+      val notifications = scheduler.run { Observable.returning("value", scheduler).repeat.take(3) }
 
       notifications must be equalTo Seq(201 -> OnNext("value"), 202 -> OnNext("value"), 203 -> OnNext("value"), 203 -> OnCompleted)
     }
 
     "repeat source observable" in {
-      val notifications = scheduler.run {Observable(scheduler, 1, 2, 3).repeat.take(7)}
+      val notifications = scheduler.run { Observable(scheduler, 1, 2, 3).repeat.take(7) }
 
       notifications must be equalTo Seq(
         201 -> OnNext(1), 202 -> OnNext(2), 203 -> OnNext(3),
@@ -934,19 +930,19 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     }
 
     "repeat zero" in {
-      val notifications = scheduler.run {Observable.returning("value", scheduler).repeat(0)}
+      val notifications = scheduler.run { Observable.returning("value", scheduler).repeat(0) }
 
       notifications must be equalTo Seq(200 -> OnCompleted)
     }
 
     "repeat once" in {
-      val notifications = scheduler.run {Observable.returning("value", scheduler).repeat(1)}
+      val notifications = scheduler.run { Observable.returning("value", scheduler).repeat(1) }
 
       notifications must be equalTo Seq(201 -> OnNext("value"), 201 -> OnCompleted)
     }
 
     "repeat twice" in {
-      val notifications = scheduler.run {Observable.returning("value", scheduler).repeat(2)}
+      val notifications = scheduler.run { Observable.returning("value", scheduler).repeat(2) }
 
       notifications must be equalTo Seq(201 -> OnNext("value"), 202 -> OnNext("value"), 202 -> OnCompleted)
     }
@@ -962,7 +958,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
       val result = observable.materialize.subscribe(observer)
 
-      there was one(observer).onNext(OnNext("hello")) then one(observer).onNext(OnCompleted)
+      there was one(observer).onNext(OnNext("hello")) andThen one(observer).onNext(OnCompleted)
     }
 
     "provide the error stream as an instance of OnError" in {
@@ -984,7 +980,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
       observable.onNext(OnNext("first"))
       observable.onNext(OnNext("second"))
 
-      there was one(observer).onNext("first") then one(observer).onNext("second")
+      there was one(observer).onNext("first") andThen one(observer).onNext("second")
       there were noMoreCallsTo(observer)
     }
 
@@ -1057,7 +1053,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "use specified scheduler" in {
       val observable = scheduler.createHotObservable(Seq())
 
-      scheduler.run {observable.subscribeOn(scheduler)}
+      scheduler.run { observable.subscribeOn(scheduler) }
 
       observable.subscriptions must be equalTo Seq(201 -> 1001)
     }
@@ -1065,7 +1061,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "conform to observable contract" in {
       val observable = scheduler.createHotObservable(Seq(250 -> OnNext("foo"), 300 -> OnCompleted, 350 -> OnNext("ignored")))
 
-      val notifications = scheduler.run {observable.subscribeOn(scheduler)}
+      val notifications = scheduler.run { observable.subscribeOn(scheduler) }
 
       notifications must be equalTo Seq(250 -> OnNext("foo"), 300 -> OnCompleted)
     }
@@ -1083,7 +1079,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
     "use specified scheduler for each notification" in {
       val observable = Observable(Scheduler.immediate, 1, 2, 3)
 
-      val notifications = scheduler.run {observable.observeOn(scheduler)}
+      val notifications = scheduler.run { observable.observeOn(scheduler) }
 
       notifications must be equalTo Seq(201 -> OnNext(1), 202 -> OnNext(2), 203 -> OnNext(3), 204 -> OnCompleted)
     }
@@ -1116,7 +1112,7 @@ class ObservableTest extends Specification with JUnit with Mockito with ScalaChe
 
   "Observable.let" should {
     "pass error in let-function to caller" in {
-      Observable.returning("ignored").let(x => throw ex).subscribe(observer) must throwException(ex)
+      Observable.returning("ignored").let(x => throw ex).subscribe(observer) must throwA(ex)
     }
 
     "create observable only once to avoid additional side-effects" in {

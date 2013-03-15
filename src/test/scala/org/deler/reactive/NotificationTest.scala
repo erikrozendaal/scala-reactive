@@ -1,12 +1,8 @@
 package org.deler.reactive
 
-import org.specs.mock.Mockito
-import org.specs.Specification
-import org.specs.runner.{JUnitSuiteRunner, JUnit}
-import org.junit.runner.RunWith
-
-@RunWith(classOf[JUnitSuiteRunner])
-class NotificationTest extends Specification with JUnit with Mockito {
+@org.junit.runner.RunWith(classOf[org.specs2.runner.JUnitRunner])
+class NotificationTest extends Test {
+  isolated
 
   val observer = mock[Observer[String]]
 

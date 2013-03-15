@@ -3,6 +3,7 @@
 .project
 .scala_dependencies
 .settings
+.worksheet
 target
 *.iml
 *.ipr

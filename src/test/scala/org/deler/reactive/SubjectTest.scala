@@ -1,72 +1,84 @@
 package org.deler.reactive
 
-import org.junit.runner.RunWith
-import org.specs._
-import org.specs.mock.Mockito
-import org.specs.runner.{JUnitSuiteRunner, JUnit}
-import org.mockito.Matchers._
-import scala.collection._
+@org.junit.runner.RunWith(classOf[org.specs2.runner.JUnitRunner])
+class SubjectTest extends Test {
+  isolated
 
-@RunWith(classOf[JUnitSuiteRunner])
-class SubjectTest extends Specification with JUnit with Mockito {
-  val observer = mock[Observer[String]]
-  val observer2 = mock[Observer[String]]
-  var subscription: Closeable = _
+  val Event = "event"
+  val Error = new Exception("error")
 
-  var subject: Subject[String] = new PublishSubject[String]
+  trait Fixture {
+    val observer = mock[Observer[String]]
+    val subject: Subject[String] = new PublishSubject[String]
+  }
 
-  val replaySubject = beforeContext(subject = new ReplaySubject[String])
+  trait ReplaySubjectFixture extends Fixture {
+    override val subject = new ReplaySubject[String]
+  }
 
-  val singleObserver = beforeContext(subscription = subject.subscribe(observer))
-  val multipleObservers = beforeContext {subscription = subject.subscribe(observer); subject.subscribe(observer2)}
+  trait SingleObserverFixture extends Fixture {
+    val subscription: Closeable = subject.subscribe(observer)
+  }
 
-  val event = "event"
-  val error = new Exception("error")
+  trait MultipleObserversFixture extends SingleObserverFixture {
+    val observer2 = mock[Observer[String]]
+    subject.subscribe(observer2)
+  }
 
-  "subjects with a single observer" definedAs singleObserver should {
+  "subjects with a single observer" should workWithSingleObserver(new SingleObserverFixture {})
+  "subjects with multiple observers" should workWithMultipleObservers(new MultipleObserversFixture {})
+  "replay subjects" should {
+    workWithSingleObserver(new ReplaySubjectFixture with SingleObserverFixture {})
+    workWithMultipleObservers(new ReplaySubjectFixture with MultipleObserversFixture {})
+    rememberAndReplayPastEvents
+  }
+
+  def workWithSingleObserver(fixture: SingleObserverFixture) = {
+    import fixture._
 
     "publish events to observer" in {
-      subject.onNext(event)
+      subject.onNext(Event)
 
-      there was one(observer).onNext(event)
+      there was one(observer).onNext(Event)
     }
     "stop publishing events after onCompleted" in {
       subject.onCompleted()
-      subject.onNext(event)
+      subject.onNext(Event)
 
       there was one(observer).onCompleted()
       there were noMoreCallsTo(observer)
     }
     "stop publishing events after onError" in {
-      subject.onError(error)
-      subject.onNext(event)
+      subject.onError(Error)
+      subject.onNext(Event)
 
-      there was one(observer).onError(error)
+      there was one(observer).onError(Error)
       there were noMoreCallsTo(observer)
     }
     "stop publishing onCompleted after onError" in {
-      subject.onError(error)
+      subject.onError(Error)
       subject.onCompleted()
 
-      there was one(observer).onError(error)
+      there was one(observer).onError(Error)
       there were noMoreCallsTo(observer)
     }
     "stop publishing after a subscription is closed" in {
       subscription.close()
 
-      subject.onNext(event)
+      subject.onNext(Event)
 
       there were noMoreCallsTo(observer)
     }
   }
 
-  "subjects with multiple observers" definedAs multipleObservers should {
+  def workWithMultipleObservers(fixture: MultipleObserversFixture) {
+    import fixture._
 
     "publish onNext to all observers" in {
-      subject.onNext(event)
+      subject.onNext(Event)
 
-      there was one(observer).onNext(event)
-      there was one(observer2).onNext(event)
+      there was one(observer).onNext(Event)
+      there was one(observer2).onNext(Event)
     }
     "publish onCompleted to all observers" in {
       subject.onCompleted()
@@ -75,25 +87,24 @@ class SubjectTest extends Specification with JUnit with Mockito {
       there was one(observer2).onCompleted()
     }
     "publish onError to all observers" in {
-      subject.onError(error)
+      subject.onError(Error)
 
-      there was one(observer).onError(error)
-      there was one(observer2).onError(error)
+      there was one(observer).onError(Error)
+      there was one(observer2).onError(Error)
     }
     "continue publishing events after one observer unsubscribes" in {
       subscription.close()
 
-      subject.onNext(event)
+      subject.onNext(Event)
 
       there were noMoreCallsTo(observer)
-      there was one(observer2).onNext(event)
+      there was one(observer2).onNext(Event)
     }
-
   }
 
-  "replay subjects" definedAs replaySubject should {
-    behave like "subjects with a single observer"
-    behave like "subjects with multiple observers"
+  def rememberAndReplayPastEvents = {
+    val fixture = new ReplaySubjectFixture {}
+    import fixture._
 
     "replay all past events to new subscriptions" in {
       subject.onNext("a")
@@ -101,37 +112,35 @@ class SubjectTest extends Specification with JUnit with Mockito {
 
       subject.subscribe(observer)
 
-      there was one(observer).onNext("a") then one(observer).onNext("b")
+      there was one(observer).onNext("a") andThen one(observer).onNext("b")
       there were noMoreCallsTo(observer)
     }
     "replay all past events to a new subscription followed by onComplete when completed" in {
-      subject.onNext(event)
+      subject.onNext(Event)
       subject.onCompleted()
 
       subject.subscribe(observer)
 
-      there was one(observer).onNext(event) then one(observer).onCompleted()
+      there was one(observer).onNext(Event) andThen one(observer).onCompleted()
       there were noMoreCallsTo(observer)
     }
     "replay all past events to a new subscription followed by onError when failed" in {
-      subject.onNext(event)
-      subject.onError(error)
+      subject.onNext(Event)
+      subject.onError(Error)
 
       subject.subscribe(observer)
 
-      there was one(observer).onNext(event) then one(observer).onError(error)
+      there was one(observer).onNext(Event) andThen one(observer).onError(Error)
       there were noMoreCallsTo(observer)
     }
-
     "stop remembering new notifications once completed" in {
       subject.onNext("a")
       subject.onCompleted()
       subject.onNext("b")
 
       subject.subscribe(observer)
-      there was one(observer).onNext("a") then one(observer).onCompleted()
+      there was one(observer).onNext("a") andThen one(observer).onCompleted()
       there were noMoreCallsTo(observer)
     }
   }
-
 }
