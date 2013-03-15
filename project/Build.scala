@@ -10,7 +10,7 @@ object ProjectBuild extends Build {
       name := "scala-reactive",
       organization := "org.deler",
       version := "0.3-SNAPSHOT",
-      scalaVersion := "2.10.1-RC2",
+      scalaVersion := "2.10.1",
       scalacOptions ++= Seq("-Xlint", "-deprecation", "-unchecked", "-feature"),
       fork in Test := true,
       libraryDependencies ++= Seq(
